@@ -12,10 +12,15 @@ Last verified on REAPER 7.71/macOS-arm64: 2026-06-27 (Steps 2 + 3). Step 3
 TS side 76/76 green; bridge-side dispatcher and MCP-side Zod / registry
 rejections both proven against a live REAPER session.
 
-**Step 4a 🟡 code landed; REAPER smoke pending bridge reload.** json.null
-sentinel in `packs/core/lib/json.lua`, `last_result:item:N` +
+**Step 4a ✅ done — all 7 smoke prompts verified on REAPER 7.71/macOS-arm64 (2026-06-27).**
+json.null sentinel in `packs/core/lib/json.lua`, `last_result:item:N` +
 `track:Name/item:N` resolvers in `refs.lua`, `ctx.json` wired into the
-template ctx. 76/76 tests still pass.
+template ctx. 76/76 tests pass.
+
+**Step 4b/4c ⬜ not started.** 4b = 5 easy templates (`track_create`,
+`track_rename`, `item_move`, `item_rate`, `item_trim`). 4c = 3 trickier
+ones (`item_duplicate`, `item_fade` — first user of `json.null` —
+`media_import`).
 
 ### v0.1 progress at a glance
 
@@ -29,23 +34,19 @@ JSON null fix) and 6 (render) are the biggest. Steps 5, 7, 8 are smaller.
 
 ### Next action
 
-1. **Reload `streetlight_bridge.lua` in REAPER** (Step 4a touched
-   `json.lua`, `refs.lua`, and the bridge ctx wiring — the bridge dofile's
-   pack files exactly once at startup, so a reload is mandatory). Console
-   should still print `templates: item_pitch` — no new templates land
-   until 4b.
+1. **Start Step 4b** — 5 templates that are 1-API-call wrappers each:
+   `track_create`, `track_rename`, `item_move`, `item_rate`, `item_trim`.
+   No new infrastructure needed; the locked dispatcher inherits the
+   envelope shape and Step 4a's refs are already live.
 
-2. **Walk the 4a smoke prompts** in § "Step 4a smoke recipe" below.
-   Each prompt verifies one ref kind. Three prompts total; all
-   reversible via Cmd+Z.
+2. Per template: 1 Zod schema in `packages/mcp-server/src/templates/`
+   + 1 entry in `templates/index.ts` + 1 Lua handler in
+   `reaper/packs/core/templates/` + 1 entry in `manifest.lua` + ≥1
+   call-template unit test against the fake-bridge harness.
 
-3. **If green:** flip Step 4a to ✅ and start 4b (5 easy templates:
-   `track_create`, `track_rename`, `item_move`, `item_rate`, `item_trim`).
-
-4. **If red:** paste the bridge console output + the failing
-   `call_template` response JSON into the next conversation. Likely
-   suspects: refs.lua syntax slip, `ctx.json` not threaded, last_result
-   table shape drift.
+3. Smoke test per template once code lands: 1 happy-path prompt
+   round-tripping MCP → REAPER UI; 1 undo-label check; 1 negative
+   path. Done as a batch after all 5 land, not per-template.
 
 ## What's Done
 
@@ -313,6 +314,37 @@ Then drive the negative paths to confirm error messages:
 
 If anything fails: copy the bridge console + the MCP response JSON.
 
+### Step 4a verification (2026-06-27)
+
+All 7 smoke prompts above passed against REAPER 7.71/macOS-arm64 with
+one item selected on track `111`:
+
+1. **Empty `last_result`**: `item_id: "last_result:item:0"` returned
+   `REF_INVALID, "last_result:item:0 — no mutating call has produced
+   changed_ids yet this session"`. Matches `refs.lua` wording byte-for-byte. ✅
+2. **`selected:0` baseline**: locked envelope, `changed_ids[0]` = the
+   selected item's GUID. Pitch dialog confirmed +1.000. ✅
+3. **`last_result:item:0` echo**: same GUID returned, proving the
+   bridge's `LAST_RESULT.items` write (Step 3) and read (Step 4a)
+   line up. Pitch dialog confirmed −1.000. ✅
+4. **`track:111/item:0`**: returned a real GUID for the first item on
+   track `111` by REAPER's ordering. In the test session this was
+   `{9A3ED3FD-…}`, **distinct** from the selected item — surfaced that
+   track `111` has 5 items, only one of which was selected. Resolver
+   behavior is correct. ✅
+5. **`last_result:item:99`**: `ITEM_NOT_FOUND, "last_result:item:99 out
+   of range (last_result has 1 item)"`. Singular vs plural pluralization
+   works. ✅
+6. **`track:DoesNotExist/item:0`**: `TRACK_NOT_FOUND, "No track named
+   'DoesNotExist'"`. ✅
+7. **`track:111/item:99`**: `ITEM_NOT_FOUND, "track:111/item:99 out of
+   range (track has 5 items)"`. Plural form. ✅
+
+No bridge console errors during any prompt. The bridge does NOT need
+to be re-reloaded between 4a and 4b — 4b only adds new template handler
+files (loaded once at startup via `manifest.lua`), so a single reload
+at the end of 4b is enough.
+
 ### Code — Step 2 additions
 
 Files:
@@ -344,7 +376,7 @@ Files:
 | 1 — First round trip (ping) | ✅ done | 50/50 tests pass; verified on REAPER 7.71/macOS-arm64 |
 | 2 — Read selection (get_state) | ✅ done | 61/61 tests pass; all 5 acceptance points verified on REAPER 7.71/macOS-arm64 (2026-06-27); response-budget backstop landed |
 | 3 — First mutation (item_pitch) | ✅ done | 76/76 tests pass; all 8 acceptance points verified on REAPER 7.71/macOS-arm64 (2026-06-27); `DISPATCH.template` enforces locked shape at the bridge boundary; cmd-ID hardened; mutating-timeout no-auto-retry documented |
-| 4 — Variation building blocks | 🟡 4a code-done, REAPER smoke pending; 4b/4c (7 templates) not started | json.null sentinel + last_result:item:N + track:Name/item:N landed; bridge ctx now exposes `json` so 4c's `item_fade` can detect explicit null |
+| 4 — Variation building blocks | 🟡 4a ✅; 4b/4c (7 templates) not started | json.null + last_result:item:N + track:Name/item:N all green on REAPER 7.71/macOS-arm64 (2026-06-27, 7/7 smoke prompts); bridge ctx now exposes `json` so 4c's `item_fade` can detect explicit null |
 | 5 — Regions (region_create) | ⬜ | |
 | 6 — Render (render_region) | ⬜ | see `RENDER_NOTES.md` |
 | 7 — Recipe discovery + end-to-end demo | ⬜ | `list_recipes` tool + finalized recipe |
