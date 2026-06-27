@@ -91,26 +91,26 @@ steps:
         name: item_duplicate
         params:
           item_id: "selected:0"
-          track_id: "{{ variations_track.track.id }}"
+          track_id: "{{ variations_track.changed_ids[0] }}"
           position: "{{ i * 1.0 }}"
         bind: dup
 
       - tool: call_template
         name: item_pitch
         params:
-          item_id: "{{ dup.items[0].id }}"
+          item_id: "{{ dup.changed_ids[0] }}"
           semitones: "{{ v.pitch }}"
 
       - tool: call_template
         name: item_rate
         params:
-          item_id: "{{ dup.items[0].id }}"
+          item_id: "{{ dup.changed_ids[0] }}"
           rate: "{{ v.rate }}"
 
       - tool: call_template
         name: item_fade
         params:
-          item_id: "{{ dup.items[0].id }}"
+          item_id: "{{ dup.changed_ids[0] }}"
           fade_in: "{{ v.fade_in | default(0.0) }}"
           fade_out: "{{ v.fade_out | default(0.05) }}"
 
@@ -118,20 +118,20 @@ steps:
         name: item_trim
         when: "v.length is defined"
         params:
-          item_id: "{{ dup.items[0].id }}"
+          item_id: "{{ dup.changed_ids[0] }}"
           length: "{{ v.length }}"
 
       - tool: call_template
         name: region_create
         params:
           name: "{{ v.name }}"
-          item_id: "{{ dup.items[0].id }}"
+          item_id: "{{ dup.changed_ids[0] }}"
         bind: region
 
       - tool: call_template
         name: render_region
         params:
-          region_id: "region:{{ v.name }}"
+          region_id: "{{ region.changed_ids[0] }}"
           output_dir: "{{ inputs.output_dir }}"
           format: wav
 
@@ -141,6 +141,11 @@ steps:
 #   at runtime from previously bound results (track_id, item ids), from the
 #   current variation (v.pitch, etc.), or from the recipe inputs.
 # - `bind:` stores the result of a call under that name for later steps.
+#   `call_template` results are the locked envelope
+#   `{ template, changed_count, changed_ids, truncated }` — to refer to a
+#   created item / track / region, use `<bound_name>.changed_ids[0]`. The
+#   server NEVER returns raw descriptors; agents read post-state via
+#   `get_state` if they need names, positions, etc.
 # - `for_each:` repeats its inner steps once per entry in the referenced list.
 # - `when:` skips the step when the expression is falsy.
 # - The agent does not need to support a full Jinja engine. A small subset

@@ -49,7 +49,18 @@ export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
 export interface StreetlightError {
   code: ErrorCode;
   message: string;
-  /** If true, the agent may reasonably retry or adjust and try again. */
+  /**
+   * If true, the agent may reasonably **adjust and try again** (e.g.
+   * different params, fix selection, retry a read-only call). NOT a
+   * blanket "safe to auto-retry the same command" flag.
+   *
+   * Counter-example pinned in Step 3: a mutating `call_template` that
+   * returns `BRIDGE_NOT_RUNNING` is still `recoverable: true`, but
+   * blind auto-retry can double-apply the mutation. The agent must
+   * call `get_state` to inspect actual state and decide whether the
+   * mutation already landed. See `tools/call-template.ts` jsdoc and
+   * the MCP tool description for the locked contract.
+   */
   recoverable: boolean;
   /** Optional structured context. Never put secrets here. */
   details?: Record<string, unknown>;

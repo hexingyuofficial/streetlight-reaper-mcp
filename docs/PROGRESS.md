@@ -6,29 +6,32 @@ first.
 
 ## Current Status
 
-**Step 3 ✅ code landed; REAPER acceptance pending one-time bridge reload + smoke test.**
+**Step 3 ✅ done — all 8 acceptance points verified on REAPER 7.71/macOS-arm64 (2026-06-27).**
 
-Last verified on REAPER 7.71/macOS-arm64: 2026-06-27 (Step 2). Step 3 TS
-side fully green (`npm test` 76 pass); REAPER side awaits user reload.
+Last verified on REAPER 7.71/macOS-arm64: 2026-06-27 (Steps 2 + 3). Step 3
+TS side 76/76 green; bridge-side dispatcher and MCP-side Zod / registry
+rejections both proven against a live REAPER session.
 
 ### v0.1 progress at a glance
 
 | | Done | Code-done, REAPER-pending | Remaining |
 |---|---|---|---|
-| Steps | 0, 1, 2 | 3 | 4, 5, 6, 7, 8 |
+| Steps | 0, 1, 2, 3 | — | 4, 5, 6, 7, 8 |
 | Tests | 76/76 green | — | grows per step |
 
-**~3 / 9 steps shipped, ~5.5 left** (Step 3 counts half until REAPER
-smoke passes). Steps 4 (7 templates + 2 new ref kinds + Lua JSON null
-fix) and 6 (render) are the biggest. Steps 5, 7, 8 are smaller.
+**~4 / 9 steps shipped, ~5 left.** Steps 4 (7 templates + 2 new ref kinds + Lua
+JSON null fix) and 6 (render) are the biggest. Steps 5, 7, 8 are smaller.
 
 ### Next action
 
-1. Open REAPER, reload `streetlight_bridge.lua`, walk the 10-step
-   smoke recipe in § "Step-by-step REAPER smoke test recipe" below.
-2. If green: flip Step 3 to ✅, start Step 4.
-3. If red: copy bridge console + MCP response JSON into the next
-   conversation.
+1. Start Step 4. See `docs/IMPLEMENTATION_PLAN.md` § Step 4 for the three
+   workstreams (7 templates, 2 new ref kinds in `refs.lua`, Lua JSON
+   `null` fix). The dispatcher contract is now law — new templates
+   inherit the locked envelope shape for free; they only need to return
+   `{ changed_ids = {...} }`.
+2. `item_fade` is the first template that takes nullable params, so
+   tackle the JSON `null` sentinel in `packs/core/lib/json.lua`
+   before that one (or build `item_fade` last in the Step 4 batch).
 
 ## What's Done
 
@@ -146,10 +149,19 @@ Files (Lua):
 - `npm run typecheck` clean
 - `npm run build` clean
 - `npm test` — **76 tests pass** (4 queue + 17 refs + 6 result + 5 registry + 4 risk + 14 file-queue + 11 get-state + 12 call-template; queue.test grew from 4 to 7)
-- **REAPER smoke test pending** — user must reload
-  `streetlight_bridge.lua` in REAPER (Step 3 adds new dofile imports
-  + new dispatcher). After reload, run the Step 3 acceptance points
-  below.
+- **REAPER smoke test ✅ all 8 acceptance points on REAPER 7.71/macOS-arm64 (2026-06-27):**
+  1. `item_pitch selected:0 semitones:-3` returned the locked envelope
+     `{ template, changed_count:1, changed_ids:["guid:{1F8063CD-...}"], truncated:false }` — **no `pitch_before` / `pitch_after` / `items` fields**, dispatcher contract held ✅
+  2. Properties dialog read `Pitch adjust (semitones) = -3.000` ✅
+  3. Undo History top entry: `Streetlight: item_pitch`; `Cmd+Z` reverted pitch to 0 ✅
+  4. `selected:999` → `ITEM_NOT_FOUND`, message included actual selection count, `recoverable:true` ✅
+  5. Bogus GUID → `ITEM_NOT_FOUND` with the bogus GUID echoed back (true TAKE_NOT_FOUND for empty-MIDI not exercised; covered by the 12 call-template unit tests) ✅
+  6. `semitones: 100` → `PARAMS_INVALID` from MCP-side Zod with a
+     `"semitones: Number must be less than or equal to 24"` message; bridge `pending/` / `running/` / `done/` all empty after the call ✅
+  7. `does_not_exist` → `TEMPLATE_NOT_FOUND` from MCP-side registry
+     (message `"No template registered with name \"does_not_exist\""` — distinct from the bridge-side phrasing); bridge queue dirs empty ✅
+  8. Post-mutation `get_state(selection)` first item's GUID equalled
+     `changed_ids[0]` from acceptance 1 ✅
 
 ### Step 3 acceptance — to verify in REAPER
 
@@ -270,7 +282,7 @@ Files:
 | 0 — Repo skeleton + kernel types | ✅ done | 36/36 tests pass, typecheck + build clean |
 | 1 — First round trip (ping) | ✅ done | 50/50 tests pass; verified on REAPER 7.71/macOS-arm64 |
 | 2 — Read selection (get_state) | ✅ done | 61/61 tests pass; all 5 acceptance points verified on REAPER 7.71/macOS-arm64 (2026-06-27); response-budget backstop landed |
-| 3 — First mutation (item_pitch) | 🟡 code done, REAPER smoke pending | 76/76 tests pass; `DISPATCH.template` enforces locked shape at the bridge boundary; cmd-ID hardened; mutating-timeout no-auto-retry documented |
+| 3 — First mutation (item_pitch) | ✅ done | 76/76 tests pass; all 8 acceptance points verified on REAPER 7.71/macOS-arm64 (2026-06-27); `DISPATCH.template` enforces locked shape at the bridge boundary; cmd-ID hardened; mutating-timeout no-auto-retry documented |
 | 4 — Variation building blocks | ⬜ | 7 templates (item_reverse cut); add `last_result:item:N` + `track:Name/item:N` resolvers in `refs.lua` |
 | 5 — Regions (region_create) | ⬜ | |
 | 6 — Render (render_region) | ⬜ | see `RENDER_NOTES.md` |
@@ -372,10 +384,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Check whether REAPER smoke test on Step 3 has been done** — see "Verification status (Step 3)" and the 10-step recipe below.
-   - **If user has NOT walked the recipe yet:** walk it together. Bridge reload first; then go through the 10 prompts one at a time and confirm each result shape. Don't move to Step 4 until all 10 pass.
-   - **If smoke passed:** flip Step 3 row in the acceptance-status table from 🟡 to ✅ and proceed to Step 4.
-   - **If smoke failed:** ask user to paste the bridge console output + the MCP response JSON of the first failing step. Common failure modes: bridge didn't reload (no `templates: item_pitch` in console), dispatcher leaked descriptors (locked shape violated), undo label missing or wrong (`undo.with_undo` not called), refs.lua path math wrong on non-mac filesystems.
+2. **Step 3 REAPER smoke test is done — all 8 acceptances passed
+   2026-06-27.** See "Verification status (Step 3)" above. The 10-step
+   recipe in this file is kept around as a regression checklist; rerun
+   it after any change to `streetlight_bridge.lua` `DISPATCH.template`,
+   `refs.lua`, `undo.lua`, or `templates/item.lua` (e.g. when Step 4
+   adds new ref kinds, re-check acceptances 4 + 5).
 
 3. **Step 4 next.** Specifics in `docs/IMPLEMENTATION_PLAN.md` § Step 4. Three workstreams:
    - **7 new templates**: `track_create`, `track_rename`, `media_import`, `item_duplicate`, `item_move`, `item_rate`, `item_fade`, `item_trim` (`item_reverse` cut). Each template = 1 TS file in `packages/mcp-server/src/templates/` + 1 entry in `templates/index.ts` + 1 Lua handler in `reaper/packs/core/templates/` + 1 entry in `manifest.lua`. The `DISPATCH.template` dispatcher already enforces the locked shape — new templates inherit it for free.
