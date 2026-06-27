@@ -63,3 +63,30 @@ export interface ProjectState {
 
 /** REAPER major.minor.patch version string, e.g. "7.21". */
 export type ReaperVersion = string;
+
+/**
+ * Locked v0.1 shape returned by every `call_template` invocation, regardless
+ * of the underlying template. See docs/RESPONSE_BUDGET.md § `call_template`
+ * for the rationale.
+ *
+ * Rules (enforced at the Lua dispatcher, not in individual templates):
+ *
+ * - `changed_count` is the **true** count of items the template mutated.
+ * - `changed_ids` is capped at 50 GUIDs in mutation order. If
+ *   `changed_count > 50` then `truncated: true` and the array contains the
+ *   first 50.
+ * - The result NEVER embeds `ItemDescriptor` or other rich payloads, even
+ *   for single-item mutations. Agents read post-state via
+ *   `get_state(ids=[...])` (v0.1: ids filter unimplemented — the agent
+ *   reads `selection` and matches on returned GUIDs).
+ *
+ * This shape is the same for read-only, write-safe, filesystem-touching,
+ * and (eventually) destructive templates. Bridge dispatcher normalizes —
+ * individual handlers only return `{ changed_ids = [...] }`.
+ */
+export interface CallTemplateResult {
+  template: string;
+  changed_count: number;
+  changed_ids: string[];
+  truncated: boolean;
+}

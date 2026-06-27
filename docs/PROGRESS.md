@@ -6,10 +6,29 @@ first.
 
 ## Current Status
 
-**Step 2 ✅ DONE. Step 3 not started. Recommended next action: open a fresh
-conversation and start Step 3.**
+**Step 3 ✅ code landed; REAPER acceptance pending one-time bridge reload + smoke test.**
 
-Last verified on REAPER 7.71/macOS-arm64: 2026-06-27.
+Last verified on REAPER 7.71/macOS-arm64: 2026-06-27 (Step 2). Step 3 TS
+side fully green (`npm test` 76 pass); REAPER side awaits user reload.
+
+### v0.1 progress at a glance
+
+| | Done | Code-done, REAPER-pending | Remaining |
+|---|---|---|---|
+| Steps | 0, 1, 2 | 3 | 4, 5, 6, 7, 8 |
+| Tests | 76/76 green | — | grows per step |
+
+**~3 / 9 steps shipped, ~5.5 left** (Step 3 counts half until REAPER
+smoke passes). Steps 4 (7 templates + 2 new ref kinds + Lua JSON null
+fix) and 6 (render) are the biggest. Steps 5, 7, 8 are smaller.
+
+### Next action
+
+1. Open REAPER, reload `streetlight_bridge.lua`, walk the 10-step
+   smoke recipe in § "Step-by-step REAPER smoke test recipe" below.
+2. If green: flip Step 3 to ✅, start Step 4.
+3. If red: copy bridge console + MCP response JSON into the next
+   conversation.
 
 ## What's Done
 
@@ -52,6 +71,175 @@ Files:
 - `packs/core/lib/json.lua` — minimal pure-Lua JSON encoder/decoder
 - `packs/core/manifest.lua` — stub (templates registered from Step 3 onward)
 
+### Code — Step 3 additions (2026-06-27)
+
+Files (TS):
+
+- `packages/core/src/queue.ts` — **hardened `makeCommandId`**: format is now
+  `cmd_YYYYMMDDHHMMSSmmm_NNN_xxxxxx` (UTC time to ms + 3-digit counter +
+  6-hex-digit random). Sortable prefix preserved so bridge FIFO scan
+  (`table.sort` over filenames) still works. Closes the same-second
+  process-restart / counter-wrap collision window that would have been
+  silently dangerous once mutations started shipping. Added `CommandKind`
+  comment mapping wire kinds to MCP tool names (`call_template` ↔
+  `"template"` etc.) — answers the protocol-naming-drift flag in the
+  codex review.
+- `packages/core/src/types.ts` — `CallTemplateResult` type pinning the
+  locked envelope shape.
+- `packages/mcp-server/src/templates/item-pitch.ts` — Zod schemas (`strict`
+  mode rejects unknown params) + `CapabilityDefinition` for `item_pitch`.
+- `packages/mcp-server/src/templates/index.ts` — `registerCoreTemplates()`.
+  New templates are one-liner additions here; no per-template special
+  casing in the tool layer.
+- `packages/mcp-server/src/tools/call-template.ts` — `callTemplate()`
+  wrapper. Validates name → `TEMPLATE_NOT_FOUND`; validates params via
+  the registered Zod schema → `PARAMS_INVALID`; both happen **without**
+  touching the queue. Writes wire command `kind="template"`,
+  `name=<template>`, `params=<validated>`. **Mutating-timeout contract**
+  documented in the file's jsdoc: agents must NOT auto-retry on
+  `BRIDGE_NOT_RUNNING` for mutations — re-running can double-apply.
+- `packages/mcp-server/src/index.ts` — bootstraps the registry at startup
+  and registers the `call_template` MCP tool. Tool description names the
+  locked shape and warns against auto-retry on `BRIDGE_NOT_RUNNING`.
+- `packages/mcp-server/src/tools/__tests__/call-template.test.ts` — **12
+  tests**: happy path, on-wire kind/name/params, `TEMPLATE_NOT_FOUND`
+  without round-trip, `PARAMS_INVALID` for out-of-range / missing /
+  unknown-key / empty-name, surfaced `ITEM_NOT_FOUND` and
+  `TAKE_NOT_FOUND`, truncated-envelope propagation (50 IDs but
+  `changed_count=87`), `BRIDGE_NOT_RUNNING` semantics, no-auto-retry
+  invariant.
+- `packages/core/src/__tests__/queue.test.ts` — updated for new ID format
+  (7 tests; adds explicit lexicographic-ordering test across milliseconds).
+
+Files (Lua):
+
+- `reaper/packs/core/refs.lua` — `resolve_item(ref, last_result)` returns
+  `(item, nil)` or `(nil, code, msg)`. Step 3 implements `selected:N`
+  and `guid:{...}`. `last_result:item:N` and `track:Name/item:N` parse
+  on the TS side but return `REF_INVALID` from the bridge in v0.1 Step 3
+  — Step 4 lights them up.
+- `reaper/packs/core/undo.lua` — `with_undo(label, flags, fn)`. `pcall`
+  around the body; `Undo_EndBlock2` always runs (preventing stuck undo
+  state on handler errors). Exports `UNDO_STATE_*` constants.
+- `reaper/packs/core/templates/item.lua` — first template module.
+  `item_pitch(params, ctx)` resolves the ref, gets active take (else
+  `TAKE_NOT_FOUND`), sets `D_PITCH`, calls `UpdateArrange`, returns
+  `{ changed_ids = { "guid:..." } }`. Errors via `error({code,message})`
+  tables — strings would lose the typed code at the dispatcher boundary.
+- `reaper/packs/core/manifest.lua` — now non-empty: loads
+  `templates/item.lua` and registers `item_pitch` with undo metadata.
+  Resolves its own dir via `debug.getinfo`, so the bridge stays
+  pack-layout-agnostic.
+- `reaper/streetlight_bridge.lua` — **`DISPATCH.template` added** and
+  this is where the response-budget contract is enforced. Reads ONLY
+  `result_or_err.changed_ids` from the handler return; anything else
+  (descriptors, debug payload) is silently dropped at the dispatcher
+  boundary. Caps at 50 IDs; computes `changed_count` from the raw total;
+  sets `truncated = changed_count > 50`. Updates `LAST_RESULT.items` on
+  success (Step 4 reads). Translates `error({code, message})` tables
+  into typed error envelopes; string-error fallbacks collapse to
+  `INTERNAL_ERROR`. `undo.with_undo` wraps undoable templates so
+  `Undo_EndBlock2` runs even on the error path.
+
+### Verification status (Step 3)
+
+- `npm run typecheck` clean
+- `npm run build` clean
+- `npm test` — **76 tests pass** (4 queue + 17 refs + 6 result + 5 registry + 4 risk + 14 file-queue + 11 get-state + 12 call-template; queue.test grew from 4 to 7)
+- **REAPER smoke test pending** — user must reload
+  `streetlight_bridge.lua` in REAPER (Step 3 adds new dofile imports
+  + new dispatcher). After reload, run the Step 3 acceptance points
+  below.
+
+### Step 3 acceptance — to verify in REAPER
+
+Per the locked-shape rewrite of IMPLEMENTATION_PLAN.md Step 3:
+
+1. With one item selected, `call_template item_pitch
+   { item_id: "selected:0", semitones: -3 }` returns
+   `{ ok: true, result: { template: "item_pitch", changed_count: 1,
+   changed_ids: ["guid:{...}"], truncated: false } }`. **No item
+   descriptor in the result.**
+2. REAPER item properties dialog shows pitch -3.000.
+3. `Cmd+Z` reverts; undo history reads `Streetlight: item_pitch`.
+4. Empty selection → `{ ok: false, error: { code: "ITEM_NOT_FOUND",
+   recoverable: true } }`; REAPER state unchanged.
+5. Empty MIDI item without take → `TAKE_NOT_FOUND`.
+6. `semitones: 100` → `PARAMS_INVALID` at MCP layer; bridge log shows
+   no command picked up.
+7. Unknown template name → `TEMPLATE_NOT_FOUND` at MCP layer; bridge
+   log shows no command picked up.
+8. `get_state` after mutation reflects new pitch (verify via UI or
+   tooling).
+
+#### Step-by-step REAPER smoke test recipe
+
+The agent driving this MCP server (Claude Code, Codex, Cursor, etc.) is
+the one issuing the calls below — these are the prompts you give it.
+
+1. **Reload the bridge.** In REAPER:
+   `Actions → Show action list → ReaScript: Run reaper script (EEL2, lua, py)…`,
+   pick `reaper/streetlight_bridge.lua`. The console (`View → Show console`)
+   should print:
+   ```
+   [streetlight] bridge starting
+   [streetlight] loaded pack 'core' v0.1.0
+   [streetlight] bridge ready — templates: item_pitch
+   ```
+   No `templates: item_pitch` line → manifest didn't load; stop and
+   read the console for a dofile path error.
+
+2. **Sanity-check ping** (no mutation, proves the round trip):
+   > Prompt: *"Ping Streetlight."*
+
+   Expect `{ ok: true, result: { bridge: "connected", reaper_version: "7.x" } }`.
+
+3. **Acceptance 1 — happy path.** Drop any media file on a track,
+   select exactly one item, then:
+   > Prompt: *"Use Streetlight `call_template` to pitch the selected item down 3 semitones."*
+
+   Pass: response is the locked envelope, **with no
+   pitch_before / pitch_after fields**. Failure of this shape means the
+   dispatcher contract leaked — stop and read `streetlight_bridge.lua`
+   `DISPATCH.template`.
+
+4. **Acceptance 2 — REAPER UI confirms.** Double-click the item →
+   Properties dialog. "Pitch adjust (semitones)" should read `-3.000`.
+
+5. **Acceptance 3 — undo label.** `Edit → Undo History`. Top entry:
+   `Streetlight: item_pitch`. `Cmd+Z` reverts pitch to 0.
+
+6. **Acceptance 4 — empty selection.** Click on empty timeline (deselect
+   all), then run the same prompt as step 3. Expect `ITEM_NOT_FOUND`,
+   recoverable: true. Selection still empty.
+
+7. **Acceptance 5 — no active take.** `Insert → New MIDI item`, then
+   right-click → `Take → Delete active take` until empty. Select it. Same
+   prompt. Expect `TAKE_NOT_FOUND`.
+
+8. **Acceptance 6 — out-of-range params** (Zod blocks before the bridge):
+   > Prompt: *"Pitch the selected item up 100 semitones."*
+
+   Expect `PARAMS_INVALID` mentioning `semitones`. **Bridge console
+   should show no new activity** — proves MCP-side Zod rejected before
+   the queue write.
+
+9. **Acceptance 7 — unknown template** (registry blocks before bridge):
+   > Prompt: *"Run Streetlight template `does_not_exist` with empty params."*
+
+   Expect `TEMPLATE_NOT_FOUND`. Bridge console silent.
+
+10. **Acceptance 8 — get_state reflects mutation.** Apply acceptance 1
+    again (item still selected, pitch back to 0 from your undo). Then:
+    > Prompt: *"Get the current selection state."*
+
+    The returned item's GUID should match the `changed_ids[0]` you saw
+    in step 3. (v0.1 `get_state` does not echo pitch — verify via the
+    REAPER UI for now.)
+
+If anything fails: copy the bridge console output and the MCP response
+JSON into the next conversation. Both are needed to diagnose.
+
 ### Code — Step 2 additions
 
 Files:
@@ -82,8 +270,8 @@ Files:
 | 0 — Repo skeleton + kernel types | ✅ done | 36/36 tests pass, typecheck + build clean |
 | 1 — First round trip (ping) | ✅ done | 50/50 tests pass; verified on REAPER 7.71/macOS-arm64 |
 | 2 — Read selection (get_state) | ✅ done | 61/61 tests pass; all 5 acceptance points verified on REAPER 7.71/macOS-arm64 (2026-06-27); response-budget backstop landed |
-| 3 — First mutation (item_pitch) | ⬜ | template framework + undo + refs in Lua. **Must enforce locked `call_template` shape — see RESPONSE_BUDGET.md** |
-| 4 — Variation building blocks | ⬜ | 7 templates (item_reverse cut) |
+| 3 — First mutation (item_pitch) | 🟡 code done, REAPER smoke pending | 76/76 tests pass; `DISPATCH.template` enforces locked shape at the bridge boundary; cmd-ID hardened; mutating-timeout no-auto-retry documented |
+| 4 — Variation building blocks | ⬜ | 7 templates (item_reverse cut); add `last_result:item:N` + `track:Name/item:N` resolvers in `refs.lua` |
 | 5 — Regions (region_create) | ⬜ | |
 | 6 — Render (render_region) | ⬜ | see `RENDER_NOTES.md` |
 | 7 — Recipe discovery + end-to-end demo | ⬜ | `list_recipes` tool + finalized recipe |
@@ -116,12 +304,27 @@ These are settled. Do not re-litigate without a written reason.
 18. **`name` / `track_name` stay required `string`**: unnamed → `""`. Never `null`, never omitted. `""` = "user didn't set a name" is real state. If LLM ergonomics ever demand more, add a new `display_name` field; do not overload `name`.
 19. **Bridge defaults match TS defaults**: limit=50, MAX_LIMIT=200 in both Lua and TS. TS defense-in-depth clamps to avoid burning a Lua round-trip on a 10000-item request.
 
+### Locked 2026-06-27 — Step 3 (call_template + item_pitch)
+
+20. **Locked `call_template` shape is enforced at the BRIDGE DISPATCHER, not in individual templates.** Templates return `{ changed_ids = [...] }`; the dispatcher reads only that field and constructs `{ template, changed_count, changed_ids[≤50], truncated }`. Anything else a handler returns is silently dropped. This means a future template author cannot accidentally leak descriptors even if they want to.
+21. **Wire kind `"template"` ≠ MCP tool `call_template`.** Decoupling the agent-facing surface from the internal dispatch tag means we can later add `template_dry_run`, `template_batch`, etc. without breaking the wire format. Top-of-file comment in `queue.ts` is the authoritative map.
+22. **Command IDs are `cmd_YYYYMMDDHHMMSSmmm_NNN_xxxxxx`.** Time prefix (down to milliseconds) keeps bridge FIFO scan correct via `table.sort` over filenames; 6-hex random suffix covers the same-millisecond / process-restart collision window that would have been silently dangerous once mutations started.
+23. **Mutating-timeout is NOT a retryable error.** `BRIDGE_NOT_RUNNING` from a mutating `call_template` may mean "did not happen" OR "happened but no response". v0.1 contract: agents call `get_state` to verify and recover, NOT auto-retry. v0.2 will add idempotency tokens.
+24. **Template errors flow as `error({ code, message })` Lua tables.** String errors collapse to `INTERNAL_ERROR` at the dispatcher boundary. Typed error codes are part of the protocol — they must survive the pcall.
+
 ## Open Questions (defer until they bite)
+
+Items that have been **promoted into a specific step** are stricken out
+here and live as build-list items in that step. Anything still in this
+list has no owner.
 
 - Garbage collection for orphan `done/` files when MCP server crashes mid-poll. Punted to v0.2.
 - How to detect a stale bridge that started but is unresponsive (vs. one that never started). Today both look like BRIDGE_NOT_RUNNING.
 - Should `recipes/*.yaml` support `{{ Jinja }}`? Recipe v1 already uses it; YAML parser + template engine choice deferred to Step 7.
-- Bridge-level cap on `error.details` payload size (mentioned in RESPONSE_BUDGET.md risk register). Punted to Step 3 review.
+- ~~Bridge-level cap on `error.details` payload size.~~ → **moved to ROADMAP v0.2**.
+- ~~Mutation-retry-after-timeout (idempotency tokens).~~ → **moved to ROADMAP v0.2**. v0.1 contract documented in `tools/call-template.ts` and the `call_template` MCP tool description: agents call `get_state` to recover, never auto-retry.
+- ~~Lua JSON decoder swallows `null`.~~ → **moved to IMPLEMENTATION_PLAN Step 4** (`item_fade` is the first template that needs nullable params).
+- ~~TS/Lua queue-dir mismatch on Linux.~~ → **moved to IMPLEMENTATION_PLAN Step 8** (cross-platform polish).
 
 ## Running The Project Today
 
@@ -129,7 +332,7 @@ These are settled. Do not re-litigate without a written reason.
 cd "/path/to/streetlight soundly"
 npm install
 npm run typecheck   # both packages
-npm test            # 61 tests, all passing
+npm test            # 76 tests, all passing
 npm run build       # writes dist/ in both packages
 ```
 
@@ -141,18 +344,25 @@ streetlight/
     RESPONSE_BUDGET.md                 # ← read before adding any new tool / scope
   packages/
     core/src/                          # kernel types and registry (Step 0)
-      types.ts                         # ResponseBudgetMeta + SelectionState; "" convention in jsdoc
+      types.ts                         # + CallTemplateResult locked shape
       errors.ts                        # RESPONSE_TOO_LARGE added 2026-06-27
-    mcp-server/src/                    # MCP server + file queue (Step 1-2)
+      queue.ts                         # hardened makeCommandId (Step 3); wire-kind↔MCP-tool map at top
+    mcp-server/src/                    # MCP server + file queue (Step 1-3)
       transport/file-queue.ts
       transport/__tests__/fake-bridge.ts   # shared test harness
       tools/ping.ts
       tools/get-state.ts               # limit field + safeParse for PARAMS_INVALID
-      index.ts                         # MCP get_state tool exposes optional limit
-  reaper/                              # Lua bridge (Step 1-2)
-    streetlight_bridge.lua             # response-budget backstop in read_selection
+      tools/call-template.ts           # Step 3 — validates against registry, no per-template special-casing
+      templates/index.ts               # registerCoreTemplates(registry) — one-liner to add templates
+      templates/item-pitch.ts          # Zod schemas + CapabilityDefinition for item_pitch
+      index.ts                         # MCP get_state + call_template tools
+  reaper/                              # Lua bridge (Step 1-3)
+    streetlight_bridge.lua             # DISPATCH.template enforces locked shape at bridge boundary
     packs/core/
-      manifest.lua
+      manifest.lua                     # registers item_pitch with undo metadata
+      refs.lua                         # selected:N + guid:{...} resolvers (Step 4 adds last_result + track_item)
+      undo.lua                         # with_undo wrapper (EndBlock guaranteed)
+      templates/item.lua               # item_pitch handler
       lib/json.lua
   recipes/                             # YAML workflow recipes
   examples/                            # MCP client config examples
@@ -160,8 +370,20 @@ streetlight/
 
 ## Picking Up From Here (for the next conversation)
 
-1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything in Step 3+ is bound by the shapes locked there. Most important section: § `call_template` — locked shape.
-2. **Step 3 is the next step.** Specifics in `docs/IMPLEMENTATION_PLAN.md` § Step 3. New code areas: `call_template` MCP tool, `reaper/packs/core/templates/item.lua` (first template: `item_pitch`), `reaper/packs/core/refs.lua` (resolve `selected:N` + `guid:{...}`), `reaper/packs/core/undo.lua` (`with_undo` wrapper).
-3. **Honor the locked call_template shape from day one.** `{ template, changed_count, changed_ids, truncated }`, IDs only, capped at 50. Do not let a single template return descriptors — fix it at the bridge dispatcher if needed.
-4. **`name` / `track_name` empty-string convention is locked.** Don't change to optional/null in Step 3 schemas.
-5. **Test harness pattern:** see `packages/mcp-server/src/tools/__tests__/get-state.test.ts` for how to stand up a fake bridge per test and assert on-wire params + response shape.
+1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
+
+2. **Check whether REAPER smoke test on Step 3 has been done** — see "Verification status (Step 3)" and the 10-step recipe below.
+   - **If user has NOT walked the recipe yet:** walk it together. Bridge reload first; then go through the 10 prompts one at a time and confirm each result shape. Don't move to Step 4 until all 10 pass.
+   - **If smoke passed:** flip Step 3 row in the acceptance-status table from 🟡 to ✅ and proceed to Step 4.
+   - **If smoke failed:** ask user to paste the bridge console output + the MCP response JSON of the first failing step. Common failure modes: bridge didn't reload (no `templates: item_pitch` in console), dispatcher leaked descriptors (locked shape violated), undo label missing or wrong (`undo.with_undo` not called), refs.lua path math wrong on non-mac filesystems.
+
+3. **Step 4 next.** Specifics in `docs/IMPLEMENTATION_PLAN.md` § Step 4. Three workstreams:
+   - **7 new templates**: `track_create`, `track_rename`, `media_import`, `item_duplicate`, `item_move`, `item_rate`, `item_fade`, `item_trim` (`item_reverse` cut). Each template = 1 TS file in `packages/mcp-server/src/templates/` + 1 entry in `templates/index.ts` + 1 Lua handler in `reaper/packs/core/templates/` + 1 entry in `manifest.lua`. The `DISPATCH.template` dispatcher already enforces the locked shape — new templates inherit it for free.
+   - **2 new ref kinds in `refs.lua`**: `last_result:item:N` (bridge already updates `LAST_RESULT.items` after every mutating success — just need the read side) and `track:Name/item:N`.
+   - **Lua JSON `null` fix**: `reaper/packs/core/lib/json.lua` currently swallows `null`. `item_fade` is the first template with nullable params. Add a `json.null` sentinel + document in `TEMPLATE_SPEC.md`.
+
+4. **The Step 3 contracts are now law.** `call_template` envelope shape is `{ template, changed_count, changed_ids, truncated }`. Dispatcher enforces. New templates only need to return `{ changed_ids = [...] }`.
+
+5. **`name` / `track_name` empty-string convention is locked.** Don't change to optional/null in Step 4 schemas.
+
+6. **Test harness pattern:** see `packages/mcp-server/src/tools/__tests__/call-template.test.ts` for how to stand up a fake bridge, register the registry, and assert on-wire kind/name/params + envelope shape.

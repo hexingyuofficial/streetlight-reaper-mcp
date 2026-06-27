@@ -2,6 +2,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CapabilityRegistry } from "@streetlight/core";
 import { FileQueueClient, resolveQueueDir } from "./transport/file-queue.js";
 import { ping } from "./tools/ping.js";
 import {
@@ -11,6 +12,8 @@ import {
   MAX_GET_STATE_LIMIT,
   MIN_GET_STATE_LIMIT,
 } from "./tools/get-state.js";
+import { callTemplate } from "./tools/call-template.js";
+import { registerCoreTemplates } from "./templates/index.js";
 import { z } from "zod";
 
 async function main(): Promise<void> {
@@ -18,8 +21,11 @@ async function main(): Promise<void> {
   const client = new FileQueueClient({ queueDir });
   await client.init();
 
+  const registry = new CapabilityRegistry();
+  registerCoreTemplates(registry);
+
   process.stderr.write(
-    `[streetlight-mcp] queue=${queueDir}\n[streetlight-mcp] step 2 — ping + get_state\n`,
+    `[streetlight-mcp] queue=${queueDir}\n[streetlight-mcp] step 3 — ping + get_state + call_template (${registry.size()} templates)\n`,
   );
 
   const server = new McpServer({
@@ -62,6 +68,27 @@ async function main(): Promise<void> {
         scope: scope ?? "selection",
         limit: limit ?? DEFAULT_GET_STATE_LIMIT,
       });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+        isError: !result.ok,
+      };
+    },
+  );
+
+  server.tool(
+    "call_template",
+    "Run a registered Streetlight template against the REAPER project. Returns a locked envelope { template, changed_count, changed_ids, truncated } — never raw item descriptors, even for single-item changes (read post-state via get_state). On BRIDGE_NOT_RUNNING for a mutating template, the mutation may STILL have applied; do NOT auto-retry — call get_state to inspect actual state. See docs/RESPONSE_BUDGET.md § call_template.",
+    {
+      name: z.string().min(1),
+      params: z.record(z.unknown()).optional(),
+    },
+    async ({ name, params }) => {
+      const result = await callTemplate(client, registry, { name, params });
       return {
         content: [
           {

@@ -1,0 +1,62 @@
+import { z } from "zod";
+import type { CapabilityDefinition } from "@streetlight/core";
+
+/**
+ * `item_pitch` — set the pitch of an item's active take, in semitones.
+ *
+ * Step 3's first mutating template. Schemas are the source of truth for both
+ * the MCP server's input validation and (later) the JSON Schema returned by
+ * `list_templates`. The Lua bridge does NOT re-validate types; it relies on
+ * the MCP server's Zod pass.
+ *
+ * Result schema describes only the **agent-facing** call_template envelope
+ * (locked shape `{ template, changed_count, changed_ids, truncated }`).
+ * The handler returns `{ changed_ids }` — the dispatcher fills in the rest.
+ */
+
+const ItemPitchParams = z
+  .object({
+    item_id: z
+      .string()
+      .min(1)
+      .describe(
+        'Logical item reference. Step 3 supports "selected:N" and "guid:{...}".',
+      ),
+    semitones: z
+      .number()
+      .min(-24)
+      .max(24)
+      .describe(
+        "Pitch shift in semitones. Clamped to ±24 by policy (not a REAPER limit).",
+      ),
+  })
+  .strict();
+
+/**
+ * Locked `call_template` result shape. This is the SAME schema for every
+ * template; it lives next to `item_pitch` only because it is the first
+ * template to ship. Step 4 will lift this into a shared module.
+ */
+const CallTemplateResultSchema = z
+  .object({
+    template: z.literal("item_pitch"),
+    changed_count: z.number().int().min(0),
+    changed_ids: z.array(z.string()).max(50),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const itemPitchDefinition: CapabilityDefinition<
+  typeof ItemPitchParams,
+  typeof CallTemplateResultSchema
+> = {
+  name: "item_pitch",
+  description: "Set the active take's pitch (in semitones) on the referenced item.",
+  pack: "core",
+  risk: "write_safe",
+  mutates: true,
+  undoable: true,
+  idempotent: true, // Setting pitch to N twice yields the same state.
+  params: ItemPitchParams,
+  result: CallTemplateResultSchema,
+};

@@ -53,6 +53,8 @@ Possible additions:
 - optional socket transport (the file queue stays as zero-dependency fallback)
 - batched `call_template_sequence` tool so an N-step recipe is one MCP round trip, not N
 - response-budget API: `cursor` pagination, `fields` projection, `include` opt-in for FX/automation, `summary_only` on `list_templates` / `list_recipes`, configurable per-tool byte caps. v0.1 only ships the backstop (limit + item-boundary truncation + `RESPONSE_TOO_LARGE`); see `docs/RESPONSE_BUDGET.md` for the shape that v0.2 grows.
+- **idempotency tokens on mutating `call_template` commands.** v0.1 contract: `BRIDGE_NOT_RUNNING` after a mutation timeout may mean "did not happen" OR "happened but no response" — agent must call `get_state` to recover, NOT auto-retry. v0.2 adds a per-command token the bridge dedupes on, so retry is safe. Tracked in `docs/PROGRESS.md` Open Questions.
+- **bridge-level cap on `error.details` payload size.** v0.1 risk register flags that a template stuffing 50 KB into `error.details` lands unbounded in the response. v0.2 enforces a hardcoded cap (same family as `MAX_RESPONSE_BYTES`).
 - better variation parameter presets
 - UI click variations recipe
 - footstep set recipe

@@ -1,12 +1,16 @@
 -- streetlight_bridge.lua
 --
--- Step 1 scope: file-queue round trip for `ping`.
+-- Step 3 scope: ping + get_state (Steps 1-2) + call_template (Step 3).
 -- Dispatches one command at a time, FIFO by command ID.
 -- Re-runs at ~10 Hz via reaper.defer.
 --
 -- Auto-start: drop a `dofile("/abs/path/to/this/file")` line into
 -- ~/Library/Application Support/REAPER/Scripts/__startup.lua (macOS) or
 -- the platform equivalent. See docs/INSTALL.md.
+--
+-- After updating any pack file (refs.lua, undo.lua, templates/*.lua, or
+-- manifest.lua), re-run THIS script in REAPER to pick the changes up —
+-- the bridge dofile's the manifest exactly once at startup.
 
 -- ─── Bootstrap ──────────────────────────────────────────────────────────────
 
@@ -17,7 +21,10 @@ local SCRIPT_DIR = (function()
   return src:match("(.*/)") or "./"
 end)()
 
-local json = dofile(SCRIPT_DIR .. "packs/core/lib/json.lua")
+local json     = dofile(SCRIPT_DIR .. "packs/core/lib/json.lua")
+local refs     = dofile(SCRIPT_DIR .. "packs/core/refs.lua")
+local undo     = dofile(SCRIPT_DIR .. "packs/core/undo.lua")
+local MANIFEST = dofile(SCRIPT_DIR .. "packs/core/manifest.lua")
 
 -- ─── Paths ──────────────────────────────────────────────────────────────────
 
@@ -54,6 +61,16 @@ end
 
 log("bridge starting")
 log("queue dir = " .. QUEUE_DIR)
+log("loaded pack '" .. MANIFEST.name .. "' v" .. MANIFEST.version)
+
+-- ─── Per-session state ──────────────────────────────────────────────────────
+
+-- `last_result` is bridge-internal memory of the most recent successful
+-- mutating command's outputs. Step 3 only WRITES it; Step 4 will add the
+-- ref-resolution side (`last_result:item:N`). Resets when the bridge
+-- reloads, never persisted. Read-only commands (ping, get_state) MUST NOT
+-- touch this — its semantics are "what did the last mutation change".
+local LAST_RESULT = { items = {}, regions = {}, tracks = {} }
 
 -- ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -274,6 +291,143 @@ function DISPATCH.get_state(cmd)
   }
 end
 
+-- ─── Template dispatch + locked-shape enforcement ──────────────────────────
+--
+-- This is THE place where the `call_template` shape is enforced. Per the
+-- contract in docs/RESPONSE_BUDGET.md § call_template, every successful
+-- `call_template` envelope MUST look like:
+--
+--   { template, changed_count, changed_ids[≤50], truncated }
+--
+-- Even if a template handler returns extra fields (descriptors, before/after
+-- snapshots, debug payload), we read ONLY `changed_ids` from it. Anything
+-- else is dropped at this boundary, by design.
+
+local CHANGED_IDS_CAP = 50
+
+local function normalize_changed_ids(raw)
+  -- Accept either a Lua array of strings, or nil (meaning "nothing changed,
+  -- but the operation succeeded" — e.g. a future no-op template). Anything
+  -- else is a template-author bug; we coerce to empty and let the handler
+  -- learn about it via the (eventual) test suite, rather than blowing up
+  -- the bridge.
+  if raw == nil then return {}, 0 end
+  if type(raw) ~= "table" then return {}, 0 end
+
+  local total = 0
+  local capped = {}
+  for i = 1, #raw do
+    if type(raw[i]) == "string" then
+      total = total + 1
+      if #capped < CHANGED_IDS_CAP then
+        capped[#capped + 1] = raw[i]
+      end
+    end
+  end
+  return capped, total
+end
+
+local function build_template_envelope(template_name, raw_changed)
+  local capped, total = normalize_changed_ids(raw_changed)
+  return {
+    ok = true,
+    result = {
+      template      = template_name,
+      changed_count = total,
+      changed_ids   = json.array(capped),
+      truncated     = total > CHANGED_IDS_CAP,
+    },
+  }
+end
+
+local function template_error_envelope(err_obj)
+  -- Handlers raise via `error({ code, message })`. Anything else (string
+  -- error, unexpected throw) collapses to INTERNAL_ERROR with the raw text.
+  if type(err_obj) == "table" and err_obj.code then
+    return {
+      ok = false,
+      error = {
+        code        = tostring(err_obj.code),
+        message     = tostring(err_obj.message or err_obj.code),
+        recoverable = err_obj.recoverable ~= false,
+      },
+    }
+  end
+  return {
+    ok = false,
+    error = {
+      code        = "INTERNAL_ERROR",
+      message     = "Handler crashed: " .. tostring(err_obj),
+      recoverable = false,
+    },
+  }
+end
+
+function DISPATCH.template(cmd)
+  local name = cmd.name
+  if type(name) ~= "string" or name == "" then
+    return {
+      ok = false,
+      error = {
+        code        = "TEMPLATE_NOT_FOUND",
+        message     = "call_template requires a non-empty `name`",
+        recoverable = true,
+      },
+    }
+  end
+
+  local entry = MANIFEST.templates[name]
+  if not entry or type(entry.handler) ~= "function" then
+    return {
+      ok = false,
+      error = {
+        code        = "TEMPLATE_NOT_FOUND",
+        message     = "No template named '" .. name .. "' in pack '" .. MANIFEST.name .. "'",
+        recoverable = true,
+      },
+    }
+  end
+
+  local ctx = {
+    refs        = refs,
+    last_result = LAST_RESULT,
+  }
+  local params = cmd.params or {}
+
+  local ok_run, result_or_err
+  if entry.undoable then
+    -- with_undo guarantees Undo_EndBlock2 runs even on error path.
+    ok_run, result_or_err = undo.with_undo(
+      entry.undo_label or ("Streetlight: " .. name),
+      entry.undo_flags or undo.UNDO_STATE_ITEMS,
+      function() return entry.handler(params, ctx) end
+    )
+  else
+    ok_run, result_or_err = pcall(entry.handler, params, ctx)
+  end
+
+  if not ok_run then
+    return template_error_envelope(result_or_err)
+  end
+
+  -- Handler may have returned nothing, or returned a table missing
+  -- changed_ids. Both are tolerated — normalize_changed_ids handles them.
+  local raw_changed = nil
+  if type(result_or_err) == "table" then
+    raw_changed = result_or_err.changed_ids
+  end
+
+  local envelope = build_template_envelope(name, raw_changed)
+
+  -- last_result tracks the most recent successful mutating command's
+  -- outputs. We update it even when `changed_ids` is empty (a successful
+  -- no-op still "wins" the slot semantically). Read-only paths above
+  -- (ping, get_state) DO NOT touch LAST_RESULT.
+  LAST_RESULT.items = envelope.result.changed_ids
+
+  return envelope
+end
+
 local function dispatch(cmd)
   local kind = cmd.kind
   local handler = DISPATCH[kind]
@@ -405,5 +559,10 @@ local function tick()
   reaper.defer(tick)
 end
 
-log("bridge ready")
+log("bridge ready — templates: " .. (function()
+  local names = {}
+  for n in pairs(MANIFEST.templates) do names[#names + 1] = n end
+  table.sort(names)
+  return table.concat(names, ", ")
+end)())
 reaper.defer(tick)

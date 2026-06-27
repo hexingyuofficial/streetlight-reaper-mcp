@@ -430,8 +430,12 @@ Do steps in order. Do not start step N+1 while step N's acceptance test still fa
 
 **Build (refs):**
 
-- Add `last_result:item:N` resolution. The bridge maintains an in-memory table reset on each successful mutating command. The table is `{ items: [guid...], regions: [guid_or_index...] }`.
+- Add `last_result:item:N` resolution. The bridge maintains an in-memory table reset on each successful mutating command. The table is `{ items: [guid...], regions: [guid_or_index...] }`. (Step 3 already updates `LAST_RESULT.items` on success; this step adds the read side in `reaper/packs/core/refs.lua`.)
 - Add `track:Name/item:N` resolution.
+
+**Build (Lua JSON null fix — carried over from Step 3 Open Questions):**
+
+- `reaper/packs/core/lib/json.lua` currently decodes JSON `null` as Lua `nil`, which silently disappears from objects and array elements. Step 3 templates have no nullable params so this was OK; `item_fade` is the first to need it (fade-in/out `null` = "leave unchanged"). Fix: introduce a sentinel value (`json.null` table) so callers can distinguish "key absent" from "key present with null", and document the convention in `TEMPLATE_SPEC.md`. Update existing get_state encoder to keep emitting empty strings (not nulls) per the locked `name`/`track_name` contract.
 
 **Acceptance:**
 
@@ -561,6 +565,7 @@ This step is large. Read `docs/RENDER_NOTES.md` end-to-end before starting.
   - queue dir path under `%APPDATA%`
   - PowerShell vs cmd.exe in `INSTALL.md` snippets
   - REAPER action installation (drag/drop vs Actions menu)
+- **Fix Linux queue-dir mismatch** (carried over from Step 3 Open Questions): TS defaults to `~/.local/share/streetlight/queue`; the Lua bridge's `get_queue_dir()` in `reaper/streetlight_bridge.lua` has no Linux branch and falls through to the macOS path. Either add the Linux branch in Lua or document a hard `STREETLIGHT_QUEUE_DIR=` requirement for Linux users.
 - Cross-platform tests of: queue file atomic rename (works on NTFS), JSON UTF-8 encoding, render output path with spaces
 - Error message audit: every error code in `errors.ts` has a message a human can understand without reading source
 - `README.md` rewrite for users (not contributors): one-paragraph "what is this", install link, demo prompt, gif if possible
