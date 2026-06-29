@@ -45,7 +45,39 @@ as the only supported path.
 
 ## Install Steps
 
-### 1. Install The MCP Server
+### 1. Beginner Install (Recommended For Non-Developers)
+
+Download or clone the Streetlight repo, then use the one-click helper:
+
+- macOS: double-click `install.command`.
+- Windows: double-click `install.cmd` (experimental; not yet live
+  REAPER-smoked).
+
+The helper runs:
+
+```bash
+npm install
+npm run build
+npm run setup
+```
+
+Then it opens the REAPER launcher folder and the `setup-out/` folder.
+It does **not** edit your MCP client config, does **not** edit
+`reaper.ini`, does **not** touch `reaper-kb.ini`, and does **not**
+require sudo/admin privileges.
+
+After it finishes, complete the two manual steps:
+
+1. In REAPER, register and run the generated launcher:
+   `Actions → Show action list → ReaScript: Load...` → pick
+   `Scripts/Streetlight/start_bridge.lua` → **Run**.
+2. Copy the snippet from `setup-out/<your-client>.*` into your MCP
+   client config, then restart that client.
+
+If the helper fails because Node.js is missing, install Node.js 20 or
+newer and run it again.
+
+### 2. Developer Install
 
 From the Streetlight repo:
 
@@ -54,9 +86,10 @@ npm install
 npm run build
 ```
 
-### 2. Install The REAPER Bridge (Quick Setup)
+### 3. Install The REAPER Bridge (Quick Setup)
 
-The recommended path for v0.1 (macOS only). One command, no hand-
+The recommended developer path. macOS is v0.1 verified; Windows is
+generated as an experimental convenience path. One command, no hand-
 written paths:
 
 ```bash
@@ -115,10 +148,13 @@ lines per REAPER launch, which is noise.
   REAPER Resource Path (portable installs, `--reapath` users).
 - `-h` / `--help`.
 
-v0.1 of setup is macOS only. Linux + Windows track with the v0.2
-cross-platform queue-dir work in `docs/ROADMAP.md`.
+macOS setup is v0.1 verified. Windows setup is generated as an
+experimental convenience path (`%APPDATA%\REAPER` Resource Path,
+forward-slash Lua launcher path) until a live Windows REAPER smoke
+passes. Linux still tracks with the v0.2 cross-platform queue-dir
+work in `docs/ROADMAP.md`.
 
-### 2 (advanced). Manual REAPER Bridge install
+### 3 (advanced). Manual REAPER Bridge install
 
 If you can't or don't want to use `npm run setup`, the bridge entry
 point is `reaper/streetlight_bridge.lua`. It `dofile`s sibling files
@@ -175,7 +211,7 @@ REAPER resource folder paths for `__startup.lua`:
 A `dofile` error at startup almost always means `packs/` is not sitting
 next to `streetlight_bridge.lua` — re-check your install layout.
 
-### 3. Configure The Agent Client
+### 4. Configure The Agent Client
 
 Register the built MCP server with your client.
 
@@ -203,7 +239,7 @@ install path above), see:
 - `examples/codex-config.example.toml`
 - `examples/claude-code.example.json`
 
-### 4. Test The Connection
+### 5. Test The Connection
 
 Ask the agent:
 

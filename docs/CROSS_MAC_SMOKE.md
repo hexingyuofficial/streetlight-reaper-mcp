@@ -39,6 +39,10 @@ release-candidate smoke should use a clean clone.
 
 ## 2. Install + build + test baseline
 
+For a beginner-style install on macOS, you can double-click
+`install.command` instead. The smoke checklist keeps the commands
+expanded so failures are easier to pinpoint.
+
 ```bash
 cd "~/Documents/steetlight soundly"
 node --version                # confirm ≥ 20
@@ -63,6 +67,9 @@ pure-TS environment delta (Node version, platform binaries) and
 nothing further in this checklist will help.
 
 ## 3. Run `npm run setup` (REAPER launcher + MCP config artifacts)
+
+If you used `install.command`, this step has already run; skim the
+expected output and continue to Step 4.
 
 `npm run setup` does two things from the repo root:
 
@@ -89,6 +96,11 @@ result, and a numbered "Next steps" block.
 `--no-overwrite` refuses to overwrite an existing launcher.
 `--reaper-resource-path /custom/path` overrides the default
 `~/Library/Application Support/REAPER` (portable installs).
+
+Windows note: `install.cmd` / `install.ps1` and `npm run setup` can
+generate the Windows launcher under `%APPDATA%\REAPER`, but Windows is
+experimental until a live Windows REAPER smoke passes. This file is
+still the macOS verification gate.
 
 ## 4. Register the launcher in REAPER
 

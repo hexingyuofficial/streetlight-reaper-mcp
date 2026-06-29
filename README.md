@@ -40,13 +40,16 @@ renders them to 8 WAV files.
 Before the first run, confirm each of these — a miss here is the usual cause
 of a demo that fails partway through with a typed error.
 
-First-time install on this Mac: from the repo root, run `npm install &&
-npm run build && npm run setup`, then register the generated launcher
-in REAPER (Actions → Show action list → ReaScript: Load... →
+First-time install on this Mac: double-click `install.command`, or run
+`npm install && npm run build && npm run setup` from the repo root.
+Then register the generated launcher in REAPER (Actions → Show action
+list → ReaScript: Load... →
 `~/Library/Application Support/REAPER/Scripts/Streetlight/start_bridge.lua`)
 and copy the snippet from `setup-out/<your-client>.*` into your MCP
-client config. Full details in [docs/INSTALL.md](docs/INSTALL.md);
-cross-Mac reproducer in [docs/CROSS_MAC_SMOKE.md](docs/CROSS_MAC_SMOKE.md).
+client config. Windows has `install.cmd` / `install.ps1` as an
+experimental convenience path, but v0.1 live verification is macOS.
+Full details in [docs/INSTALL.md](docs/INSTALL.md); cross-Mac
+reproducer in [docs/CROSS_MAC_SMOKE.md](docs/CROSS_MAC_SMOKE.md).
 
 1. **REAPER 7.x is running** with the Streetlight bridge loaded.
    The console (`View → Show console`) shows `bridge ready (generation N) — templates: …`.

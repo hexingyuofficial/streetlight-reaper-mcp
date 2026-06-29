@@ -14,10 +14,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   do NOT commit, branch, push, or reset without an explicit ask.
   Read `git log` / `git status` if you need history context; treat
   the working tree as theirs to commit.
-- `npm test` → **198/198 green** (164 Step-7-close baseline + 7 Round
+- `npm test` → **207/207 green** (164 Step-7-close baseline + 7 Round
   A: 2 risk-policy enforce, 1 file-queue non-ENOENT wrap, 4 done/
   orphan sweep; + 27 release-prep setup tests for
-  `scripts/setup.mjs`). `npm run build` → clean.
+  `scripts/setup.mjs`; +9 beginner-installer / Windows-setup tests).
+  `npm run build` → clean.
 - **Steps 4, 5, 6, 7 fully ✅** — see prior PROGRESS for details.
   Bridge is single-owner after `dofile` reload (generation guard
   from Step 6 mid-smoke fix #2 + Step 7 B4 startup
@@ -145,6 +146,17 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     populated, bridge alive. Cross-Mac flow is exercised end-to-end
     on this Mac; second-Mac smoke per `docs/CROSS_MAC_SMOKE.md` is
     the next gate.
+- **Beginner installer round (after release-prep checkpoint, not yet
+  committed at this handoff).** Added low-risk one-click wrappers:
+  `install.command` for macOS, `install.cmd` + `install.ps1` for
+  Windows experimental, and `scripts/install.mjs` as the shared Node
+  wrapper. It delegates to the existing chain (`npm install` →
+  `npm run build` → `npm run setup`) instead of duplicating setup
+  logic, then opens the launcher folder and `setup-out/`. It still
+  never edits user-global MCP configs, `reaper.ini`, or `reaper-kb.ini`.
+  `scripts/setup.mjs` now generates Windows paths experimentally
+  (`%APPDATA%\REAPER`, forward-slash Lua repo path) while keeping
+  macOS as the verified v0.1 path.
 - **Step 7 code shape (final):**
   - `list_templates` + `list_recipes` MCP tools.
     `js-yaml@^4.1.0` in `@streetlight/mcp-server` deps only.
@@ -228,7 +240,7 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 198/198,
+2. **Tests + build baseline this window:** `npm test` 207/207,
    `npm run build` clean. The `npm run typecheck` script prints a
    `TS6310` "may not disable emit" line then exits 0 — pre-existing
    project setup, do not chase. The `[streetlight-mcp] done-sweep:

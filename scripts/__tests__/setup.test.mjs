@@ -63,16 +63,19 @@ describe("buildLauncherLua", () => {
     expect(() => buildLauncherLua("./repo")).toThrow(/absolute/);
   });
 
-  it("rejects paths with characters that need lua-escape (defensive)", () => {
-    // Backslash + double-quote would force escape handling. macOS clone
-    // paths don't contain these in practice; reject hard rather than
-    // silently produce broken lua.
-    expect(() => buildLauncherLua('/Users/test/with"quote')).toThrow(
-      /quote or backslash/,
+  it("converts Windows paths to forward slashes for the Lua launcher", () => {
+    const lua = buildLauncherLua("C:\\Users\\test\\streetlight soundly");
+    expect(lua).toContain(
+      'local repo = "C:/Users/test/streetlight soundly"',
     );
-    expect(() => buildLauncherLua("/Users/test/with\\back")).toThrow(
-      /quote or backslash/,
+    expect(lua).toContain(
+      "--   C:/Users/test/streetlight soundly",
     );
+  });
+
+  it("escapes characters that need a Lua string escape", () => {
+    const lua = buildLauncherLua('/Users/test/with"quote');
+    expect(lua).toContain('local repo = "/Users/test/with\\"quote"');
   });
 });
 
@@ -122,7 +125,13 @@ describe("MCP client config builders", () => {
 
   it("mcpServerEntryPath joins with native path separators", () => {
     expect(mcpServerEntryPath("/Users/test/repo")).toBe(
-      path.join("/Users/test/repo", "packages", "mcp-server", "dist", "index.js"),
+      "/Users/test/repo/packages/mcp-server/dist/index.js",
+    );
+  });
+
+  it("mcpServerEntryPath emits forward slashes for Windows paths", () => {
+    expect(mcpServerEntryPath("C:\\Users\\test\\repo")).toBe(
+      "C:/Users/test/repo/packages/mcp-server/dist/index.js",
     );
   });
 });
@@ -190,12 +199,23 @@ describe("defaultReaperResourcePath", () => {
     );
   });
 
-  it("throws on non-darwin (v0.1 macOS only — explicit fail-fast)", () => {
-    expect(() => defaultReaperResourcePath("linux", "/home/test")).toThrow(
-      /macOS only/,
+  it("returns the Windows APPDATA REAPER path for win32", () => {
+    expect(
+      defaultReaperResourcePath("win32", "C:\\Users\\test", {
+        APPDATA: "C:\\Users\\test\\AppData\\Roaming",
+      }),
+    ).toBe("C:\\Users\\test\\AppData\\Roaming\\REAPER");
+  });
+
+  it("falls back to home/AppData/Roaming on Windows when APPDATA is absent", () => {
+    expect(defaultReaperResourcePath("win32", "C:\\Users\\test", {})).toBe(
+      "C:\\Users\\test\\AppData\\Roaming\\REAPER",
     );
-    expect(() => defaultReaperResourcePath("win32", "C:\\Users\\test")).toThrow(
-      /macOS only/,
+  });
+
+  it("throws on unsupported non-darwin/non-win32 platforms", () => {
+    expect(() => defaultReaperResourcePath("linux", "/home/test")).toThrow(
+      /macOS and experimental Windows/,
     );
   });
 });
@@ -220,5 +240,14 @@ describe("launcherInstallPath / reaperIniPath", () => {
       "/custom/path/Scripts/Streetlight/start_bridge.lua",
     );
     expect(reaperIniPath("/custom/path")).toBe("/custom/path/reaper.ini");
+  });
+
+  it("uses Windows separators for a Windows resource path", () => {
+    expect(launcherInstallPath("C:\\Users\\test\\AppData\\Roaming\\REAPER")).toBe(
+      "C:\\Users\\test\\AppData\\Roaming\\REAPER\\Scripts\\Streetlight\\start_bridge.lua",
+    );
+    expect(reaperIniPath("C:\\Users\\test\\AppData\\Roaming\\REAPER")).toBe(
+      "C:\\Users\\test\\AppData\\Roaming\\REAPER\\reaper.ini",
+    );
   });
 });

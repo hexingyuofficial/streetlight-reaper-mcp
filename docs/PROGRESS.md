@@ -24,7 +24,12 @@ WAV-only, plus the focused preflight check (touch a `.wav.RPP` →
     green (146 baseline + 16 Step 7 + 2 sidecar preflight),
     `npm run build` clean. Step 3 → Step 8 Round A/C is captured in
     local checkpoint `166d109`; the release-prep setup/launcher round
-    is still user-owned until explicitly committed.
+    landed as local checkpoint `4e44b3b`. A follow-up beginner
+    installer round is in progress: macOS `install.command`, Windows
+    experimental `install.cmd` / `install.ps1`, and shared
+    `scripts/install.mjs` delegate to `npm install` → `npm run build`
+    → `npm run setup` without changing the locked bridge/config
+    boundaries. Test bar is now 207/207 (+9 over release-prep).
 Step 8 release polish closed across Round A (release-blocker code,
 +7 tests → 171/171) + Round C (docs + audit evaluation) the same
 window; Round B (Linux queue-dir) deferred to v0.2 by explicit user
@@ -209,7 +214,7 @@ below.
 | | Done | Remaining |
 |---|---|---|
 | Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅ | none (v0.1 release-polish complete; release-prep setup/launcher landed; second-Mac smoke is the open gate) |
-| Tests | 198/198 green | grows per step |
+| Tests | 207/207 green | grows per step |
 
 **9 / 9 steps shipped.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk

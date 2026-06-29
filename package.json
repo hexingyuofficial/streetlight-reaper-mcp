@@ -15,7 +15,8 @@
     "typecheck": "tsc -b --noEmit || tsc -b",
     "test": "vitest run",
     "clean": "tsc -b --clean",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "setup:beginner": "node scripts/install.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
