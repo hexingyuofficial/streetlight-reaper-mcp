@@ -57,7 +57,19 @@ export const itemTrimDefinition: CapabilityDefinition<
   entity_kind: "item",
   undo_flags: ["ITEMS"],
   idempotent: true,
-  expectedDelta: { count: 1 },
+  expectedDelta: {
+    count: 1,
+    fields: [
+      { scope: "item", field: "D_LENGTH", paramPath: "length", tolerance: 1e-6 },
+      {
+        scope: "take",
+        field: "D_STARTOFFS",
+        paramPath: "start_offset",
+        tolerance: 1e-6,
+        optional: true,
+      },
+    ],
+  },
   params: ItemTrimParams,
   result: ItemTrimResult,
   examples: [

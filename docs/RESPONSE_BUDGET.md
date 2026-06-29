@@ -361,8 +361,8 @@ verification fails:
 }
 ```
 
-v0.1 field verification is bounded to one field per call on four
-in-place templates, so the added payload is tiny. The error message
+v0.1 field verification is bounded to at most two fields per call
+(`item_trim` in Slice 07), so the added payload is tiny. The error message
 still tells agents to call `get_state` because the mutation may already
 be applied.
 

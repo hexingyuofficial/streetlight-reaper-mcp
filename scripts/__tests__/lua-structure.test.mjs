@@ -198,6 +198,8 @@ describe("Lua bridge structure", () => {
     expect(verify).toMatch(/GetMediaItemTakeInfo_Value/);
     expect(verify).toMatch(/GetSetMediaTrackInfo_String/);
     expect(verify).toMatch(/field\.param_path or field\.paramPath/);
+    expect(verify).toMatch(/expected_value == nil and field\.optional == true/);
+    expect(verify).toMatch(/item_trim\.start_offset/);
 
     const checkIndex = bridge.indexOf("verify.check(expected_delta");
     const fieldsIndex = bridge.indexOf("verify.check_fields(");

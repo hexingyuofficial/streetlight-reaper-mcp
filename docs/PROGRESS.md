@@ -11,67 +11,50 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 06 ✅ live-smoked
+**Kernel hardening Slice 07 ✅ live-smoked / commit-ready
 (2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_07_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 07 continues H2
+field-level verification by adding `item_trim`, the first covered
+template with multiple fields and mixed scopes. `FieldCheckDescriptor`
+now supports `optional?: boolean`; validation rejects non-boolean
+`optional` values and rejects all-optional field lists. `item_trim`
+declares `D_LENGTH ← params.length` and optional
+`D_STARTOFFS ← params.start_offset`. The bridge wire carries
+`optional:true`, and `verify.lua` skips a field only when the param is
+absent and the descriptor is optional. Decisions locked by user:
+D1=a only `item_trim`; D2=a optional absent means skip/ok; D3=a
+`optional` naming everywhere; D4=a `D_STARTOFFS` tolerance `1e-6`;
+D5=a all-optional fields rejected. Full static baseline is green:
+`npm test` 257/257, `npm run build` clean, `npm run check:manifest`
+green, `npm run check:error-codes-fresh` green, and `git diff
+--check` clean. Reviewer pass completed after two P3 doc-only nits
+were fixed. REAPER live smoke passed on REAPER 7.71/macOS-arm64 after
+a full quit/reopen and current bridge reload: length-only `item_trim`
+verified `D_LENGTH` and skipped absent optional `D_STARTOFFS`;
+length + `start_offset` verified both item and take scopes; mismatch,
+LAST_RESULT, error-code, get_state, and render_region regressions all
+passed. Slice 07 is uncommitted; commit/push only on explicit user ask.
+
+**Kernel hardening Slice 06 ✅ live-smoked, committed, and pushed
+(2026-06-30, `9f56ce0`).** Architect packet lives at
 `docs/plans/SLICE_06_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 06 is the first H2
-field-level verification slice: `ExpectedDelta` now accepts optional
+field-level verification slice: `ExpectedDelta` accepts optional
 `fields[]` descriptors, four in-place templates declare one field
 postcheck each (`item_pitch`, `item_move`, `item_rate`,
 `track_rename`), `call_template` sends those descriptors over the
 queue inside `expected_delta.fields[]`, and `verify.lua` reads back
 the changed item/take/track field after structural verification but
-before `LAST_RESULT` is updated. Field mismatch returns typed
-`VERIFY_FAILED`, `recoverable:false`, preserves the Slice 04
-`call get_state` recovery phrase, and adds compact
-`error.details.fields[]`. Decisions locked by user: D1=a four-template
-subset; D2=a tolerance `1e-6`; D3=a fields nested in `expected_delta`;
-D4=a field failure does not update `LAST_RESULT`; D5=a fields cannot
-coexist with creates/maybeCreates/deletes yet. Static focused checks
-passed during implementation, and the full static baseline was green:
+before `LAST_RESULT` is updated. Full static baseline was green:
 `npm test` 254/254, `npm run build` clean, `npm run check:manifest`
 green, `npm run check:error-codes-fresh` green, and `git diff --check`
-clean. REAPER live smoke passed on REAPER 7.71/macOS-arm64 after a
-full quit/reopen and current `start_bridge.lua` run. Console showed
-`bridge starting (generation 1)`, `loaded error_codes (22 codes)`, and
-`bridge ready (generation 1) — loaded error_codes (22 codes)`.
-
-Slice 06 live smoke evidence (run id `1782752152900`): `ping`
-returned connected; `list_templates` returned 11 templates with
-`expectedDelta.fields[]` only on `item_pitch`, `item_move`,
-`item_rate`, and `track_rename`, while `render_region` still had no
-`expectedDelta`. Happy field-verified paths used track
-`guid:{70F9F13F-6930-6848-BAAA-C4CEEEAA3B8B}` and item
-`guid:{D6A8F3D7-6F6E-E74D-8B6B-33BD86BE1B80}`: `item_pitch
-semitones:-3`, `item_move position:5.0`, `item_rate rate:0.5`, and
-`track_rename` all returned the locked success envelope; extra
-zero-tolerance raw probes for `D_PITCH=-3`, `D_POSITION=5.0`, and
-`D_PLAYRATE=0.5` passed, so the `1e-6` tolerance was not too strict.
-The renamed track was visible in TCP / Track Manager as
-`smoke06-1782752152900-lastresult-after-fieldfail`.
-
-Forced failure evidence: raw `track_rename` with
-`expected_delta.fields[0].field="P_NAMEX"` returned
-`VERIFY_FAILED`, `recoverable:false`, retained the `call get_state`
-recovery phrase, and appended
-`details.fields[0]={scope:"track", field:"P_NAMEX",
-expected:"smoke06-1782752152900-badfield", actual:0, ok:false}`. A
-following `track_rename last_result:track:0` hit the same track GUID,
-proving field failure did not update `LAST_RESULT`. Raw `item_pitch`
-with structural mismatch
-`expected_delta={count:1,creates:true,fields:[...]}` returned
-structural `VERIFY_FAILED` first, with no top-level
-`error.details.fields`. Regression checks also passed:
-`item_fade`, `item_trim`, and `region_create` happy paths were
-unaffected (`region:smoke06-r-1782752152900`); `item_pitch
-selected:99` returned `ITEM_NOT_FOUND`; `region_create name:"a/b"`
-returned `REGION_NAME_INVALID`; `get_state(tracks, include:["fx"])`
-returned tracks with `fx:[]`; `get_state(render, include:["fx"])`
-returned `PARAMS_INVALID`; and bare `get_state(render)` returned
-`SCOPE_NOT_IMPLEMENTED`. Smoke objects remain in the open REAPER
-project for manual undo/delete, including two setup-only tracks from an
-early smoke-script selection assumption.
+clean. REAPER live smoke passed on REAPER 7.71/macOS-arm64 with run id
+`1782752152900`, including happy field-verified paths, raw field
+mismatch `VERIFY_FAILED` with `details.fields[0]`, structural mismatch
+priority, and error-code/get_state regressions.
 
 **Kernel hardening Slice 05 ✅ live-smoked, committed, and pushed
 (2026-06-30, `5ba6318`).** Architect packet lives at
@@ -626,6 +609,85 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
+### Kernel hardening Slice 07 (2026-06-30) — item_trim optional field verification ✅ live-smoked
+
+Scope: extend the Slice 06 field-verification infrastructure to
+`item_trim` and introduce optional field descriptors for params that are
+validly absent.
+
+What changed:
+
+- `packages/core/src/registry.ts` — `FieldCheckDescriptor` adds
+  `optional?: boolean`. Validation rejects non-boolean `optional` and
+  all-optional `fields[]` lists. Metadata deep-copy behavior from Slice
+  06 still applies.
+- `packages/mcp-server/src/templates/item-trim.ts` — `item_trim` now
+  declares two field checks: item `D_LENGTH` from `params.length`, and
+  take `D_STARTOFFS` from `params.start_offset` with `optional:true`.
+- `packages/mcp-server/src/tools/call-template.ts` — wire mapping now
+  includes `optional` when present. The descriptor remains stable
+  whether or not `start_offset` is supplied in params.
+- `scripts/manifest-alignment.mjs` — static descriptor checks now
+  enforce boolean `optional` and reject all-optional field lists.
+- `reaper/packs/core/verify.lua` — `check_fields()` skips a field when
+  `field.optional == true` and the expected param is absent. All other
+  comparison behavior remains Slice 06 behavior.
+
+Decisions locked by user:
+
+- D1=a: only `item_trim` in Slice 07.
+- D2=a: optional field with absent param is skipped and treated as ok.
+- D3=a: TS / wire / Lua all use the name `optional`.
+- D4=a: `D_STARTOFFS` tolerance `1e-6`.
+- D5=a: reject all-optional `fields[]`.
+
+Verification:
+
+- Focused registry/build tests passed.
+- Focused call-template/list-templates wire tests passed.
+- Focused manifest-alignment/check:manifest passed.
+- Focused lua-structure/check:error-codes-fresh passed.
+- Full static baseline passed: `npm run build`, `npm test` (257/257),
+  `npm run check:manifest`, `npm run check:error-codes-fresh`, and
+  `git diff --check`.
+- Reviewer pass completed. Two P3 doc-only nits were fixed before handoff:
+  `docs/TEMPLATE_SPEC.md` now includes `optional?: boolean` in the
+  `ExpectedDelta.fields[]` TypeScript snippet, and this section no
+  longer contradicted the green static baseline.
+- Live smoke passed through the real REAPER bridge queue on
+  REAPER 7.71/macOS-arm64 after a full quit/reopen and current
+  `start_bridge.lua` reload.
+
+Live-smoke evidence:
+
+- `ping` connected to REAPER 7.71/macOS-arm64.
+- `list_templates` returned 11 templates; `item_trim` exposed two field
+  checks, with take `D_STARTOFFS` marked `optional:true`.
+- `item_trim` length-only passed on retry; live `check_fields` accepted
+  item `D_LENGTH` and skipped absent optional `start_offset`.
+- `item_trim` length + `start_offset` passed, verifying both item and
+  take scopes.
+- Slice 06 regressions passed: `item_pitch` and `item_move`.
+- Forced field mismatch returned `VERIFY_FAILED`, `recoverable:false`,
+  with `details.fields[]`; a follow-up proved `LAST_RESULT` was not
+  polluted after verify failure.
+- Raw optional-skip path passed.
+- Structural mismatch still won before field verify and did not include
+  `details.fields`.
+- Error-code regressions passed: `ITEM_NOT_FOUND`,
+  `REGION_NAME_INVALID`.
+- get_state regressions passed.
+- `render_region` carve-out passed; a WAV was created and the temporary
+  render directory was cleaned.
+- First harness pass reported 12/13 because S2 attempted to read the
+  item through `get_state(selection)` while the imported item was not
+  selected. The actual `item_trim` command had already returned success;
+  rerunning S2 with the correct envelope / `check_fields` assertion
+  passed.
+- Smoke left live REAPER project objects: a `Slice07 Live Smoke ...`
+  track/item and a `slice07_live_...` region remain in the currently
+  modified project for manual undo/delete.
+
 ### Kernel hardening Slice 06 (2026-06-30) — field-level verification ✅ live-smoked
 
 Scope: implement the first H2 field postcheck subset from
@@ -808,11 +870,11 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-06 ✅ | Second-Mac smoke / release tag; commit only on explicit user ask |
-| Tests | Slice 06: 254/254 green + REAPER smoke ✅ | none for Slice 06 |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-07 ✅ | Slice 07 commit/push if user asks |
+| Tests | Slice 07: 257/257 green; Slice 07 REAPER smoke ✅ | none for Slice 07 |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 06 is now
-live-smoked.** Step 6 (render) closed
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 07 is now
+live-smoked and commit-ready.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
 discovery + end-to-end demo) shipped 2026-06-29 in the same window:
@@ -850,14 +912,17 @@ remaining gate before any release tag. Kernel Slice 01 was committed
 and pushed at `baa13bd`; Slice 02 was committed and pushed at
 `e93d39e`; Slice 03 was committed and pushed at `4e80839`; Slice 04
 was committed and pushed at `d3f8fe7`; Slice 05 was committed and
-pushed at `5ba6318`. Slice 06 is the current uncommitted,
-live-smoked H2 field-verification slice.
+pushed at `5ba6318`; Slice 06 was committed and pushed at `9f56ce0`.
+Slice 07 is the current uncommitted H2 item_trim optional-field verification slice,
+with static baseline, reviewer pass, and REAPER live smoke complete.
 
 ### Next action
 
-1. **Commit/push Slice 06 only if the user explicitly asks.** It is
-   static-green and REAPER-smoked, but versioning remains user-owned.
-2. **Second-Mac smoke / v0.1 release tag remains available.**
+1. **Commit/push Slice 07 only if the user explicitly asks.**
+   Static baseline, reviewer pass, and REAPER live smoke are green.
+2. **Start the next architect slice only after Slice 07 is either committed
+   or the user explicitly chooses to continue with it uncommitted.**
+3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 
@@ -3519,12 +3584,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 06 is live-smoked and uncommitted.** Read
-   `docs/plans/SLICE_06_ARCHITECT_PLAN.md` before touching code.
-   Static baseline is green (`npm test` 254/254, build,
-   `check:manifest`, `check:error-codes-fresh`, `git diff --check`),
-   and REAPER smoke passed on 7.71/macOS-arm64. Do not commit unless
-   the user explicitly asks.
+2. **Kernel hardening Slice 07 is live-smoked and commit-ready.** Read
+   `docs/plans/SLICE_07_ARCHITECT_PLAN.md` before touching code.
+   Static baseline is green (`npm test` 257/257, build,
+   `check:manifest`, `check:error-codes-fresh`, `git diff --check`);
+   reviewer pass is complete; REAPER 7.71/macOS-arm64 smoke passed.
+   Do not commit unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

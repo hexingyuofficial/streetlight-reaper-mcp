@@ -89,7 +89,7 @@ describe("listTemplates", () => {
     expect(renderRegion).not.toHaveProperty("expectedDelta");
   });
 
-  it("exposes Slice 06 field-check metadata only on the four in-place templates", () => {
+  it("exposes field-check metadata only on the five covered in-place templates", () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);
     const result = listTemplates(registry);
@@ -108,6 +108,19 @@ describe("listTemplates", () => {
       [
         "item_rate",
         [{ scope: "take", field: "D_PLAYRATE", paramPath: "rate", tolerance: 1e-6 }],
+      ],
+      [
+        "item_trim",
+        [
+          { scope: "item", field: "D_LENGTH", paramPath: "length", tolerance: 1e-6 },
+          {
+            scope: "take",
+            field: "D_STARTOFFS",
+            paramPath: "start_offset",
+            tolerance: 1e-6,
+            optional: true,
+          },
+        ],
       ],
       [
         "track_rename",

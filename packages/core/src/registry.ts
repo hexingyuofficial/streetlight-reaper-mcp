@@ -17,6 +17,7 @@ export interface FieldCheckDescriptor {
   scope: "take" | "item" | "track";
   paramPath: string;
   tolerance?: number;
+  optional?: boolean;
 }
 
 export interface ExpectedDelta {
@@ -234,6 +235,7 @@ function validateExpectedDeltaFields(
   }
 
   const seen = new Set<string>();
+  let requiredCount = 0;
   for (const [i, field] of fields.entries()) {
     if (!field || typeof field !== "object") {
       throw new Error(
@@ -268,6 +270,12 @@ function validateExpectedDeltaFields(
         `Capability ${name} expectedDelta.fields[${i}] tolerance must be a finite non-negative number`,
       );
     }
+    if (field.optional !== undefined && typeof field.optional !== "boolean") {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] optional must be boolean when present`,
+      );
+    }
+    if (field.optional !== true) requiredCount += 1;
 
     const key = `${field.scope}:${field.field}`;
     if (seen.has(key)) {
@@ -276,5 +284,10 @@ function validateExpectedDeltaFields(
       );
     }
     seen.add(key);
+  }
+  if (requiredCount === 0) {
+    throw new Error(
+      `Capability ${name} expectedDelta.fields must include at least one required field`,
+    );
   }
 }

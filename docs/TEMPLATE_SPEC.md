@@ -249,6 +249,7 @@ type ExpectedDelta = {
     field: string;
     paramPath: string;
     tolerance?: number;
+    optional?: boolean;
   }>;
 };
 ```
@@ -282,6 +283,8 @@ back the changed entity after the structural check passes but before
 | `item_pitch` | `take` | `D_PITCH` | `params.semitones` |
 | `item_move` | `item` | `D_POSITION` | `params.position` |
 | `item_rate` | `take` | `D_PLAYRATE` | `params.rate` |
+| `item_trim` | `item` | `D_LENGTH` | `params.length` |
+| `item_trim` | `take` | `D_STARTOFFS` | `params.start_offset` when supplied |
 | `track_rename` | `track` | `P_NAME` | `params.name` |
 
 Numeric checks use absolute `tolerance` when declared. String checks use
@@ -289,9 +292,17 @@ strict equality. Field verification failure returns `VERIFY_FAILED`,
 `recoverable:false`, preserves the Slice 04 recovery phrase, and does
 not update `LAST_RESULT`.
 
-Field verification is intentionally not global yet. `item_trim`,
-`item_fade`, `item_duplicate`, `track_create`, `media_import`,
-`region_create`, and `render_region` remain Slice 07+ work.
+Slice 07 adds optional field descriptors. When a field has
+`optional:true` and `params[paramPath]` is absent, the bridge skips
+that field and treats it as ok. This is used by `item_trim`:
+`D_LENGTH` is always verified, while `D_STARTOFFS` is verified only
+when the caller supplies `start_offset`. Descriptor validation rejects
+an all-optional `fields[]` list so a template cannot accidentally ship
+a no-op verifier.
+
+Field verification is intentionally not global yet. `item_fade`,
+`item_duplicate`, `track_create`, `media_import`, `region_create`, and
+`render_region` remain Slice 08+ work.
 `render_region` still omits `expectedDelta` in v0.1 because it is
 deferred and returns an artifact path, not a project-entity ref.
 

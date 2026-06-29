@@ -170,6 +170,7 @@ function validateExpectedDeltaFields(name, expected) {
   }
 
   const seen = new Set();
+  let requiredCount = 0;
   for (const [i, field] of fields.entries()) {
     if (!field || typeof field !== "object") {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] must be an object`);
@@ -192,12 +193,19 @@ function validateExpectedDeltaFields(name, expected) {
     ) {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] invalid tolerance`);
     }
+    if (field.optional !== undefined && typeof field.optional !== "boolean") {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] optional must be boolean`);
+    }
+    if (field.optional !== true) requiredCount += 1;
 
     const key = `${field.scope}:${field.field}`;
     if (seen.has(key)) {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: duplicate field ${key}`);
     }
     seen.add(key);
+  }
+  if (requiredCount === 0) {
+    errors.push(`EXPECTED_DELTA_INVALID:${name}: fields must include at least one required field`);
   }
 
   return errors;

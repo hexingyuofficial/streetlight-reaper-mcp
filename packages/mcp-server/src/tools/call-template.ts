@@ -134,6 +134,9 @@ function toWireExpectedDelta(
             ...(field.tolerance !== undefined
               ? { tolerance: field.tolerance }
               : {}),
+            ...(field.optional !== undefined
+              ? { optional: field.optional }
+              : {}),
           })),
         }
       : {}),

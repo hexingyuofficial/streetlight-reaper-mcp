@@ -204,12 +204,17 @@ function M.check_fields(expected, changed_ids, params, entity_kind)
       else
         local key = param_path(field)
         local expected_value = type(params) == "table" and params[key] or nil
-        local ok_read, actual_value, read_err = reader.read(handle, field.field)
-        local tolerance = field.tolerance
-        if not ok_read then
-          failures[#failures + 1] = mismatch(field, expected_value, read_err or "read failed", tolerance)
-        elseif not values_match(expected_value, actual_value, tolerance) then
-          failures[#failures + 1] = mismatch(field, expected_value, actual_value, tolerance)
+        if expected_value == nil and field.optional == true then
+          -- The descriptor says "verify this only when the caller supplied
+          -- the param". Used by item_trim.start_offset in Slice 07.
+        else
+          local ok_read, actual_value, read_err = reader.read(handle, field.field)
+          local tolerance = field.tolerance
+          if not ok_read then
+            failures[#failures + 1] = mismatch(field, expected_value, read_err or "read failed", tolerance)
+          elseif not values_match(expected_value, actual_value, tolerance) then
+            failures[#failures + 1] = mismatch(field, expected_value, actual_value, tolerance)
+          end
         end
       end
     end

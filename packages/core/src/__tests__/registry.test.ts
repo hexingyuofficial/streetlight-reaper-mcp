@@ -260,6 +260,51 @@ describe("CapabilityRegistry", () => {
     });
   });
 
+  it("accepts optional expectedDelta field checks when at least one field is required", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "trim_checked",
+      description: "trim checked",
+      pack: "test",
+      risk: "write_safe",
+      mutates: true,
+      undoable: true,
+      idempotent: true,
+      entity_kind: "item",
+      undo_flags: ["ITEMS"],
+      expectedDelta: {
+        count: 1,
+        fields: [
+          { scope: "item", field: "D_LENGTH", paramPath: "length", tolerance: 1e-6 },
+          {
+            scope: "take",
+            field: "D_STARTOFFS",
+            paramPath: "start_offset",
+            tolerance: 1e-6,
+            optional: true,
+          },
+        ],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    expect(reg.list()[0]?.expectedDelta).toEqual({
+      count: 1,
+      fields: [
+        { scope: "item", field: "D_LENGTH", paramPath: "length", tolerance: 1e-6 },
+        {
+          scope: "take",
+          field: "D_STARTOFFS",
+          paramPath: "start_offset",
+          tolerance: 1e-6,
+          optional: true,
+        },
+      ],
+    });
+  });
+
   it("deep-copies expectedDelta fields in metadata", () => {
     const reg = new CapabilityRegistry();
     reg.register({
@@ -340,6 +385,32 @@ describe("CapabilityRegistry", () => {
         fields: [{ scope: "take", field: "D_PITCH", paramPath: "semitones", tolerance: -1 }],
       }),
     ).toThrow(/tolerance/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [
+          {
+            scope: "take",
+            field: "D_STARTOFFS",
+            paramPath: "start_offset",
+            optional: "yes",
+          },
+        ],
+      }),
+    ).toThrow(/optional must be boolean/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [
+          {
+            scope: "take",
+            field: "D_STARTOFFS",
+            paramPath: "start_offset",
+            optional: true,
+          },
+        ],
+      }),
+    ).toThrow(/at least one required field/);
     expect(() =>
       registerWithExpectedDelta({
         count: 1,

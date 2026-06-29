@@ -124,6 +124,12 @@ envelope / note）无需改 dispatcher 即可加入。
 `item_rate`, and `track_rename`; the remaining templates stay Slice 07+
 scope.
 
+2026-06-30 note: Slice 07 extends field-level verification to
+`item_trim` and introduces `optional:true` field descriptors for params
+that are validly absent. `item_fade`, `item_duplicate`, `track_create`,
+`media_import`, `region_create`, and `render_region` stay Slice 08+
+scope.
+
 **触及文件**：
 - `packages/core/src/registry.ts`（`expectedDelta` 字段）
 - `packages/core/src/errors.ts`（`VERIFY_FAILED`）

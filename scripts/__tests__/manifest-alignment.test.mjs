@@ -193,6 +193,7 @@ return { templates = {
               { scope: "take", field: "D_PITCH", paramPath: "take.pitch", tolerance: -1 },
               { scope: "take", field: "D_PITCH", paramPath: "semitones" },
               { scope: "fx", field: "", paramPath: "" },
+              { scope: "item", field: "D_LENGTH", paramPath: "length", optional: "yes" },
             ],
           },
         },
@@ -221,6 +222,35 @@ return { templates = {
     );
     expect(errors).toContain(
       "EXPECTED_DELTA_INVALID:item_pitch: fields[2] missing paramPath",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[3] optional must be boolean",
+    );
+  });
+
+  it("reports expectedDelta fields when every field is optional", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 1,
+            fields: [
+              { scope: "take", field: "D_STARTOFFS", paramPath: "start_offset", optional: true },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields must include at least one required field",
     );
   });
 

@@ -135,7 +135,22 @@ describe("callTemplate", () => {
           ],
         },
       ],
-      ["item_trim", { count: 1 }],
+      [
+        "item_trim",
+        {
+          count: 1,
+          fields: [
+            { scope: "item", field: "D_LENGTH", param_path: "length", tolerance: 1e-6 },
+            {
+              scope: "take",
+              field: "D_STARTOFFS",
+              param_path: "start_offset",
+              tolerance: 1e-6,
+              optional: true,
+            },
+          ],
+        },
+      ],
       ["item_fade", { count: 1 }],
       ["item_duplicate", { count: 1, creates: true }],
       ["media_import", { count: "any", creates: true }],
@@ -182,6 +197,44 @@ describe("callTemplate", () => {
         params: validParamsByTemplate.render_region,
       });
       expect(bridge.seen.at(-1)).not.toHaveProperty("expected_delta");
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: item_trim field descriptors are stable with or without start_offset", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{TRIM}"]),
+    );
+    const expectedFields = [
+      { scope: "item", field: "D_LENGTH", param_path: "length", tolerance: 1e-6 },
+      {
+        scope: "take",
+        field: "D_STARTOFFS",
+        param_path: "start_offset",
+        tolerance: 1e-6,
+        optional: true,
+      },
+    ];
+
+    try {
+      await callTemplate(client, registry, {
+        name: "item_trim",
+        params: { item_id: "selected:0", length: 1 },
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        fields: expectedFields,
+      });
+
+      await callTemplate(client, registry, {
+        name: "item_trim",
+        params: { item_id: "selected:0", length: 1, start_offset: 0.25 },
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        fields: expectedFields,
+      });
     } finally {
       await bridge.stop();
     }

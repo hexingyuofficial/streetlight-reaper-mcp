@@ -128,6 +128,11 @@ undo 包裹路径（~L578）；读 `item.lua` 的 handler 写法（`item_pitch` 
 changes `verify.lua` and the bridge success path, live smoke must full
 quit/reopen REAPER before loading `start_bridge.lua`.
 
+2026-06-30 note: Slice 07 implements `item_trim` field postchecks and
+the `optional:true` skip rule in `verify.lua`. It also changes the
+`check_fields` path, so live smoke again requires full quit/reopen
+REAPER before loading `start_bridge.lua`.
+
 ### 细化点（这步设计难点都在这里）
 - **不要做任意字段的全量 before/after diff**——太贵且 before 不可知（handler 内部才解析
   出受影响实体）。校验只覆盖两类**可知后置条件**：
