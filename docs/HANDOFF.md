@@ -4,7 +4,7 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
 ## Where the project is
 
-- Path: `/Users/Zhuanz/Documents/steetlight soundly`, git repo on
+- Path: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`, git repo on
   branch `main`. Local checkpoint `166d109` contains the Step 3 →
   Step 8 Round A/C release-candidate pile. The current working tree
   is the release-prep setup/launcher round (`scripts/setup.mjs`,
@@ -60,6 +60,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   (Lua falls through to macOS path) explicitly NOT done this cycle —
   no live Linux REAPER rig to verify. INSTALL.md env-var workaround
   remains the supported v0.1 Linux path.
+- **Kernel hardening master plans are now parked in `docs/plans/`.**
+  Start with `docs/plans/KERNEL_HARDENING_PLAN.md` for the contract
+  and `docs/plans/KERNEL_HARDENING_EXECUTION.md` for execution notes.
+  They define the H1–H7 hardening sequence and should be treated as
+  Architect input, not as already-approved implementation.
 - **Step 8 Round C ✅ (2026-06-29 same window, docs-only).** Three
   Round-C items closed:
   - **README sidecar wording** fixed at `README.md:85-96` — the stale

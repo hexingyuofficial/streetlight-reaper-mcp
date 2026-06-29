@@ -13,7 +13,7 @@ describe("buildInstallPlan", () => {
   it("builds the macOS beginner install command plan", () => {
     const plan = buildInstallPlan({
       platform: "darwin",
-      repoAbsPath: "/Users/test/streetlight soundly",
+      repoAbsPath: "/Users/test/dir with spaces/repo",
       homeDir: "/Users/test",
       env: {},
     });
@@ -21,7 +21,7 @@ describe("buildInstallPlan", () => {
     expect(plan.launcherPath).toBe(
       "/Users/test/Library/Application Support/REAPER/Scripts/Streetlight/start_bridge.lua",
     );
-    expect(plan.setupOutDir).toBe("/Users/test/streetlight soundly/setup-out");
+    expect(plan.setupOutDir).toBe("/Users/test/dir with spaces/repo/setup-out");
     expect(plan.commands).toEqual([
       ["npm", ["install"]],
       ["npm", ["run", "build"]],
@@ -32,7 +32,7 @@ describe("buildInstallPlan", () => {
   it("builds the experimental Windows install command plan", () => {
     const plan = buildInstallPlan({
       platform: "win32",
-      repoAbsPath: "C:\\Users\\test\\streetlight soundly",
+      repoAbsPath: "C:\\Users\\test\\dir with spaces\\repo",
       homeDir: "C:\\Users\\test",
       env: { APPDATA: "C:\\Users\\test\\AppData\\Roaming" },
     });
@@ -41,7 +41,7 @@ describe("buildInstallPlan", () => {
       "C:\\Users\\test\\AppData\\Roaming\\REAPER\\Scripts\\Streetlight\\start_bridge.lua",
     );
     expect(plan.setupOutDir).toBe(
-      "C:\\Users\\test\\streetlight soundly/setup-out",
+      "C:\\Users\\test\\dir with spaces\\repo/setup-out",
     );
   });
 
@@ -56,4 +56,3 @@ describe("buildInstallPlan", () => {
     ).toThrow(/macOS and experimental Windows/);
   });
 });
-

@@ -2690,9 +2690,9 @@ console message instead of stack-tracing out of `dofile`.
 
 1. `npm run setup` ran clean. Launcher landed at
    `~/Library/Application Support/REAPER/Scripts/Streetlight/start_bridge.lua`
-   with the repo's actual absolute path baked in (`/Users/Zhuanz/Documents/steetlight soundly`).
+   with the repo's actual absolute path baked in (currently `/Users/Zhuanz/Documents/streetlight-reaper-mcp`).
 2. Three `setup-out/*` files written with the absolute dist path
-   (`/Users/Zhuanz/Documents/steetlight soundly/packages/mcp-server/dist/index.js`).
+   (`/Users/Zhuanz/Documents/streetlight-reaper-mcp/packages/mcp-server/dist/index.js`).
 3. Render-in-background detection printed `✓ ON` — matches actual
    `workrender=8209` in the user's reaper.ini (bitfield, any non-zero
    → ON path saved us from a false OFF on strict `==1`).
@@ -2882,7 +2882,7 @@ list has no owner.
 ## Running The Project Today
 
 ```bash
-cd "/path/to/streetlight soundly"
+cd /path/to/streetlight-reaper-mcp
 npm install
 npm run typecheck   # both packages
 npm test            # 131 tests, all passing

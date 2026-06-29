@@ -14,11 +14,11 @@ import {
 
 describe("buildLauncherLua", () => {
   it("bakes the repo path into the lua and dofiles the bridge", () => {
-    const lua = buildLauncherLua("/Users/test/streetlight soundly");
+    const lua = buildLauncherLua("/Users/test/dir with spaces/repo");
     // Path appears in header comment + in the runtime string.
-    expect(lua).toContain("/Users/test/streetlight soundly");
+    expect(lua).toContain("/Users/test/dir with spaces/repo");
     expect(lua).toContain(
-      'local repo = "/Users/test/streetlight soundly"',
+      'local repo = "/Users/test/dir with spaces/repo"',
     );
     expect(lua).toContain("dofile(bridge)");
     expect(lua).toContain("/reaper/streetlight_bridge.lua");
@@ -64,12 +64,12 @@ describe("buildLauncherLua", () => {
   });
 
   it("converts Windows paths to forward slashes for the Lua launcher", () => {
-    const lua = buildLauncherLua("C:\\Users\\test\\streetlight soundly");
+    const lua = buildLauncherLua("C:\\Users\\test\\dir with spaces\\repo");
     expect(lua).toContain(
-      'local repo = "C:/Users/test/streetlight soundly"',
+      'local repo = "C:/Users/test/dir with spaces/repo"',
     );
     expect(lua).toContain(
-      "--   C:/Users/test/streetlight soundly",
+      "--   C:/Users/test/dir with spaces/repo",
     );
   });
 
@@ -81,11 +81,11 @@ describe("buildLauncherLua", () => {
 
 describe("MCP client config builders", () => {
   it("Claude Code config points node at the absolute dist entry", () => {
-    const json = buildClaudeCodeConfig("/Users/test/streetlight soundly");
+    const json = buildClaudeCodeConfig("/Users/test/dir with spaces/repo");
     const parsed = JSON.parse(json);
     expect(parsed.mcpServers.streetlight.command).toBe("node");
     expect(parsed.mcpServers.streetlight.args).toEqual([
-      "/Users/test/streetlight soundly/packages/mcp-server/dist/index.js",
+      "/Users/test/dir with spaces/repo/packages/mcp-server/dist/index.js",
     ]);
   });
 
@@ -106,11 +106,11 @@ describe("MCP client config builders", () => {
   });
 
   it("Codex TOML has [mcp_servers.streetlight] with the absolute dist path", () => {
-    const toml = buildCodexConfig("/Users/test/streetlight soundly");
+    const toml = buildCodexConfig("/Users/test/dir with spaces/repo");
     expect(toml).toContain("[mcp_servers.streetlight]");
     expect(toml).toContain('command = "node"');
     expect(toml).toContain(
-      'args = ["/Users/test/streetlight soundly/packages/mcp-server/dist/index.js"]',
+      'args = ["/Users/test/dir with spaces/repo/packages/mcp-server/dist/index.js"]',
     );
   });
 

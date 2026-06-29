@@ -5,7 +5,7 @@
     "streetlight": {
       "command": "node",
       "args": [
-        "/Users/your-name/code/streetlight soundly/packages/mcp-server/dist/index.js"
+        "/Users/your-name/code/streetlight-reaper-mcp/packages/mcp-server/dist/index.js"
       ],
       "env": {
         "STREETLIGHT_QUEUE_DIR": "/Users/your-name/Library/Application Support/Streetlight/queue"
