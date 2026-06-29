@@ -7,7 +7,7 @@
 --
 -- Handler shape matches templates/item.lua:
 --   function(params, ctx) -> { changed_ids = {...} }
--- Errors raise via `error({ code, message })`.
+-- Errors raise via `error({ code, message })`; codes come from `ctx.errs`.
 
 local M = {}
 
@@ -22,10 +22,10 @@ local function file_is_readable(path)
   return true
 end
 
-local function item_guid(item)
+local function item_guid(item, errs)
   local _, guid = reaper.GetSetMediaItemInfo_String(item, "GUID", "", false)
   if not guid or guid == "" then
-    raise("INTERNAL_ERROR", "REAPER returned no GUID for a media item")
+    raise(errs.INTERNAL_ERROR, "REAPER returned no GUID for a media item")
   end
   return guid
 end
@@ -90,22 +90,22 @@ end
 -- assumption is false: `GetTrackMediaItem` returns items in timeline
 -- (position) order, so a track with a pre-existing item past the edit
 -- cursor would make us mis-identify the insertion.
-local function snapshot_track_item_guids(track)
+local function snapshot_track_item_guids(track, errs)
   local set = {}
   local count = reaper.CountTrackMediaItems(track)
   for i = 0, count - 1 do
     local it = reaper.GetTrackMediaItem(track, i)
-    set[item_guid(it)] = true
+    set[item_guid(it, errs)] = true
   end
   return set
 end
 
-local function find_new_items(track, before_guids)
+local function find_new_items(track, before_guids, errs)
   local new_items = {}
   local count = reaper.CountTrackMediaItems(track)
   for i = 0, count - 1 do
     local it = reaper.GetTrackMediaItem(track, i)
-    local g = item_guid(it)
+    local g = item_guid(it, errs)
     if not before_guids[g] then
       new_items[#new_items + 1] = { item = it, guid = g }
     end
@@ -136,20 +136,21 @@ end
 -- translate that to MEDIA_NOT_FOUND too — from the agent's perspective the
 -- file may exist on disk but REAPER couldn't decode it.
 function M.media_import(params, ctx)
+  local errs = ctx.errs
   if not file_is_readable(params.path) then
-    raise("MEDIA_NOT_FOUND", "Cannot read media file at path: " .. tostring(params.path))
+    raise(errs.MEDIA_NOT_FOUND, "Cannot read media file at path: " .. tostring(params.path))
   end
 
   local target_track, tcode, tmsg = ctx.refs.resolve_track(
     params.track_id, ctx.last_result
   )
   if not target_track then
-    raise(tcode or "TRACK_NOT_FOUND", tmsg or "Target track not found")
+    raise(tcode or errs.TRACK_NOT_FOUND, tmsg or "Target track not found")
   end
 
   local prior_tracks = snapshot_selected_tracks()
   local prior_items  = snapshot_selected_items()
-  local before_guids = snapshot_track_item_guids(target_track)
+  local before_guids = snapshot_track_item_guids(target_track, errs)
 
   reaper.SetOnlyTrackSelected(target_track)
   local inserted = reaper.InsertMedia(params.path, 0)
@@ -162,16 +163,16 @@ function M.media_import(params, ctx)
 
   if inserted == 0 then
     raise(
-      "MEDIA_NOT_FOUND",
+      errs.MEDIA_NOT_FOUND,
       "REAPER refused to insert media at path: " .. tostring(params.path)
         .. " (unsupported format or unreadable)"
     )
   end
 
-  local new_items = find_new_items(target_track, before_guids)
+  local new_items = find_new_items(target_track, before_guids, errs)
   if #new_items == 0 then
     raise(
-      "INTERNAL_ERROR",
+      errs.INTERNAL_ERROR,
       "InsertMedia returned " .. tostring(inserted)
         .. " but no new item GUID found on target track"
     )

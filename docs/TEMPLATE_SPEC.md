@@ -121,6 +121,10 @@ Mutating templates must:
 - return what changed
 - declare `expectedDelta` unless they are an intentional deferred
   carve-out like `render_region`
+- reference Lua error codes through generated constants
+  (`ctx.errs.*` / `ERRS.*` from
+  `reaper/packs/core/error_codes.lua`); runtime string-literal error
+  codes are blocked by `scripts/error-codes.mjs`
 
 Templates must not:
 

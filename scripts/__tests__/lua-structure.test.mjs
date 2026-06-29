@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  diffLuaErrorCodeLiteralUsage,
+  parseErrorCodesTs,
+} from "../error-codes.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -168,7 +172,7 @@ describe("Lua bridge structure", () => {
     expect(bridge).toMatch(/local changed_for_verify, changed_total = normalize_changed_ids\(raw_changed\)/);
     expect(bridge).toMatch(/verify\.check\(expected_delta, changed_for_verify, delta, entry\.entity_kind, changed_total\)/);
     expect(bridge).toMatch(/changed_count = changed_total/);
-    expect(bridge).toMatch(/code = "VERIFY_FAILED"/);
+    expect(bridge).toMatch(/code = ERRS\.VERIFY_FAILED/);
     expect(bridge).toMatch(/The mutation has been applied.+call get_state to inspect actual state/);
 
     expect(verify).toMatch(/function M\.snapshot\(\)/);
@@ -177,5 +181,46 @@ describe("Lua bridge structure", () => {
     expect(verify).toMatch(/changed_count = changed_count_override/);
     expect(verify).toMatch(/expected\.maybeCreates/);
     expect(verify).toMatch(/expected 0 or \+%d \(maybeCreates\)/);
+  });
+
+  it("loads generated Lua error codes and passes them through the handler context", async () => {
+    const [bridge, refs] = await Promise.all([
+      readRepoFile("reaper/streetlight_bridge.lua"),
+      readRepoFile("reaper/packs/core/refs.lua"),
+    ]);
+
+    expect(bridge).toMatch(/packs\/core\/error_codes\.lua/);
+    expect(bridge).toMatch(/EXPECTED_ERROR_CODE_COUNT\s*=\s*22/);
+    expect(bridge).toMatch(/validate_error_codes\(ERRS\)/);
+    expect(bridge).toMatch(/refs\.attach_errs\(ERRS\)/);
+    expect(bridge).toMatch(/log\("loaded error_codes \("/);
+    expect(bridge).toMatch(/errs\s*=\s*ERRS/);
+
+    expect(refs).toMatch(/local ERRS = nil/);
+    expect(refs).toMatch(/function M\.attach_errs\(errs\)/);
+    expect(refs).toMatch(/ERRS\.REF_INVALID/);
+  });
+
+  it("keeps Lua runtime code paths free of string-literal error codes", async () => {
+    const files = [
+      "reaper/streetlight_bridge.lua",
+      "reaper/packs/core/refs.lua",
+      "reaper/packs/core/templates/item.lua",
+      "reaper/packs/core/templates/track.lua",
+      "reaper/packs/core/templates/region.lua",
+      "reaper/packs/core/templates/media.lua",
+      "reaper/packs/core/templates/render.lua",
+    ];
+    const [errorsTs, ...texts] = await Promise.all([
+      readRepoFile("packages/core/src/errors.ts"),
+      ...files.map((file) => readRepoFile(file)),
+    ]);
+    const codes = parseErrorCodesTs(errorsTs);
+    const usage = diffLuaErrorCodeLiteralUsage(
+      files.map((file, index) => ({ path: file, text: texts[index] })),
+      codes,
+    );
+
+    expect(usage).toEqual([]);
   });
 });

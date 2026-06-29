@@ -125,16 +125,16 @@ local RENDER_FORMAT_WAV24_HEX = "5A 58 5A 68 64 78 67 41 41 41 3D 3D"
 
 local cached_render_format = nil
 
-local function hex_to_bytes(hex_str)
+local function hex_to_bytes(hex_str, errs)
   local clean = hex_str:gsub("%s", "")
   if #clean == 0 then
-    raise("INTERNAL_ERROR",
+    raise(errs.INTERNAL_ERROR,
       "RENDER_FORMAT_WAV24_HEX is empty — fill the constant in "
         .. "reaper/packs/core/templates/render.lua from a REAPER "
         .. "RENDER_FORMAT dump. See docs/RENDER_NOTES.md.")
   end
   if #clean % 2 ~= 0 then
-    raise("INTERNAL_ERROR",
+    raise(errs.INTERNAL_ERROR,
       "RENDER_FORMAT_WAV24_HEX has odd hex length " .. #clean
         .. " — must be pairs of hex digits.")
   end
@@ -143,7 +143,7 @@ local function hex_to_bytes(hex_str)
     local byte_str = clean:sub(i, i + 1)
     local byte_val = tonumber(byte_str, 16)
     if not byte_val then
-      raise("INTERNAL_ERROR",
+      raise(errs.INTERNAL_ERROR,
         "RENDER_FORMAT_WAV24_HEX has non-hex chars at offset " .. i
           .. ": '" .. byte_str .. "'")
     end
@@ -152,9 +152,9 @@ local function hex_to_bytes(hex_str)
   return table.concat(out)
 end
 
-local function get_render_format_blob()
+local function get_render_format_blob(errs)
   if cached_render_format then return cached_render_format end
-  cached_render_format = hex_to_bytes(RENDER_FORMAT_WAV24_HEX)
+  cached_render_format = hex_to_bytes(RENDER_FORMAT_WAV24_HEX, errs)
   return cached_render_format
 end
 
@@ -251,7 +251,7 @@ end
 -- path, and you can't open inside a missing dir). file_exists is still
 -- useful at the end as a "does this path resolve to anything?" test for
 -- distinguishing MISSING from NOT_WRITABLE if the probe fails.
-local function validate_output_dir(output_dir)
+local function validate_output_dir(output_dir, errs)
   -- Probe-write first. Use unique-per-attempt names so we never truncate
   -- or delete a user file that happens to be sitting at our probe path.
   -- Retry on candidate-name collision; only give up once 5 distinct
@@ -285,11 +285,11 @@ local function validate_output_dir(output_dir)
   -- All probe attempts exhausted (or one open() failed). Distinguish
   -- MISSING from NOT_WRITABLE using whatever signal we still have.
   if reaper.file_exists(output_dir) or dir_appears_to_exist(output_dir) then
-    raise("OUTPUT_DIR_NOT_WRITABLE",
+    raise(errs.OUTPUT_DIR_NOT_WRITABLE,
       "Could not write probe file into output_dir (regular file, "
         .. "permissions, or other): " .. output_dir)
   end
-  raise("OUTPUT_DIR_MISSING",
+  raise(errs.OUTPUT_DIR_MISSING,
     "output_dir does not exist: " .. output_dir)
 end
 
@@ -307,22 +307,22 @@ end
 -- All three surface as the same OUTPUT_FILE_EXISTS code; the message
 -- names the colliding path so the agent / user can clean up the right
 -- file. Returns the expected WAV path on success.
-local function check_no_collision(output_dir, region_name)
+local function check_no_collision(output_dir, region_name, errs)
   local expected = path_join(output_dir, region_name .. ".wav")
   if reaper.file_exists(expected) then
-    raise("OUTPUT_FILE_EXISTS",
+    raise(errs.OUTPUT_FILE_EXISTS,
       "Output file already exists (v0.1 refuses to overwrite): " .. expected)
   end
   local rpp = expected .. ".RPP"
   if reaper.file_exists(rpp) then
-    raise("OUTPUT_FILE_EXISTS",
+    raise(errs.OUTPUT_FILE_EXISTS,
       "REAPER project-copy sidecar already exists at the render target "
         .. "(v0.1 refuses to overwrite; cleanup-on-success only deletes "
         .. "sidecars THIS render produced): " .. rpp)
   end
   local rppbak = expected .. ".RPP-bak"
   if reaper.file_exists(rppbak) then
-    raise("OUTPUT_FILE_EXISTS",
+    raise(errs.OUTPUT_FILE_EXISTS,
       "REAPER project-copy sidecar backup already exists at the render "
         .. "target (v0.1 refuses to overwrite; cleanup-on-success only "
         .. "deletes sidecars THIS render produced): " .. rppbak)
@@ -342,12 +342,13 @@ local RENDER_INTERNAL_DEADLINE_S = 55
 -- ─── render_region handler ────────────────────────────────────────────────
 
 function M.render_region(params, ctx)
+  local errs = ctx.errs
   -- (1) Resolve region. Typed errors here mean nothing on disk was
   --     touched yet — settings are untouched, no probe file written.
   local region, code, msg = ctx.refs.resolve_region(
     params.region_id, ctx.last_result)
   if not region then
-    raise(code or "REGION_NOT_FOUND", msg or "Region not found")
+    raise(code or errs.REGION_NOT_FOUND, msg or "Region not found")
   end
 
   -- (1a) Re-validate the resolved region's name. region_create rejects
@@ -359,19 +360,19 @@ function M.render_region(params, ctx)
   --      RENDER_PATTERN $token expansion). Step 7 B1.
   local name_ok, name_msg = names.validate_region_name(region.name)
   if not name_ok then
-    raise("REGION_NAME_INVALID", name_msg)
+    raise(errs.REGION_NAME_INVALID, name_msg)
   end
 
   -- (2) Validate output_dir BEFORE any render settings touch.
-  validate_output_dir(params.output_dir)
+  validate_output_dir(params.output_dir, errs)
 
   -- (3) Confirm no filename collision.
-  local expected_path = check_no_collision(params.output_dir, region.name)
+  local expected_path = check_no_collision(params.output_dir, region.name, errs)
 
   -- (4) Lazily cache the WAV-24 format blob. If the constant is still the
   --     TBD placeholder, this raises INTERNAL_ERROR with a directive
   --     message — and we haven't touched render settings yet.
-  local format_blob = get_render_format_blob()
+  local format_blob = get_render_format_blob(errs)
 
   -- (5) Snapshot the 10 render settings.
   local snap = snapshot_render_settings()
@@ -393,7 +394,7 @@ function M.render_region(params, ctx)
   end)
   if not set_ok then
     pcall(restore_render_settings, snap)
-    raise("INTERNAL_ERROR",
+    raise(errs.INTERNAL_ERROR,
       "Failed to apply render settings: " .. tostring(set_err))
   end
 
@@ -468,7 +469,7 @@ function M.render_region(params, ctx)
           local ok_rm, rm_err = os.remove(rpp)
           if not ok_rm then
             restore_once()
-            raise("INTERNAL_ERROR",
+            raise(errs.INTERNAL_ERROR,
               "Render succeeded but failed to remove REAPER project-copy "
                 .. "sidecar at " .. rpp .. ": " .. tostring(rm_err))
           end
@@ -478,7 +479,7 @@ function M.render_region(params, ctx)
           local ok_rm, rm_err = os.remove(rppbak)
           if not ok_rm then
             restore_once()
-            raise("INTERNAL_ERROR",
+            raise(errs.INTERNAL_ERROR,
               "Render succeeded but failed to remove REAPER project-copy "
                 .. "sidecar backup at " .. rppbak .. ": " .. tostring(rm_err))
           end
@@ -501,17 +502,17 @@ function M.render_region(params, ctx)
     restore_once()
     local f = io.open(expected_path, "rb")
     if not f then
-      raise("RENDER_TIMEOUT",
+      raise(errs.RENDER_TIMEOUT,
         "Render produced no output at " .. expected_path
           .. " within deadline (" .. RENDER_INTERNAL_DEADLINE_S .. "s)")
     end
     local size = f:seek("end")
     f:close()
     if size == 0 then
-      raise("RENDER_FILE_EMPTY",
+      raise(errs.RENDER_FILE_EMPTY,
         "Render output at " .. expected_path .. " is empty at deadline")
     end
-    raise("RENDER_TIMEOUT",
+    raise(errs.RENDER_TIMEOUT,
       "Render output at " .. expected_path .. " (size " .. size
         .. " B) did not stabilize within deadline ("
         .. RENDER_INTERNAL_DEADLINE_S .. "s)")

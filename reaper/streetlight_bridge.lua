@@ -22,11 +22,34 @@ local SCRIPT_DIR = (function()
 end)()
 
 local json     = dofile(SCRIPT_DIR .. "packs/core/lib/json.lua")
+local ERRS     = dofile(SCRIPT_DIR .. "packs/core/error_codes.lua")
 local buckets  = dofile(SCRIPT_DIR .. "packs/core/lib/entity_buckets.lua")
 local refs     = dofile(SCRIPT_DIR .. "packs/core/refs.lua")
 local undo     = dofile(SCRIPT_DIR .. "packs/core/undo.lua")
 local verify   = dofile(SCRIPT_DIR .. "packs/core/verify.lua")
 local MANIFEST = dofile(SCRIPT_DIR .. "packs/core/manifest.lua")
+
+local EXPECTED_ERROR_CODE_COUNT = 22
+
+local function validate_error_codes(errs)
+  local count = 0
+  for key, value in pairs(errs) do
+    count = count + 1
+    if key ~= value then
+      error("error_codes.lua key/value mismatch: " .. tostring(key))
+    end
+  end
+  if count ~= EXPECTED_ERROR_CODE_COUNT then
+    error("error_codes.lua expected " .. EXPECTED_ERROR_CODE_COUNT
+      .. " codes, got " .. tostring(count))
+  end
+end
+
+validate_error_codes(ERRS)
+if type(refs.attach_errs) ~= "function" then
+  error("refs.lua does not expose attach_errs")
+end
+refs.attach_errs(ERRS)
 
 -- ─── Paths ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +113,7 @@ local MY_GENERATION = _G.STREETLIGHT_BRIDGE_GENERATION
 log("bridge starting (generation " .. MY_GENERATION .. ")")
 log("queue dir = " .. QUEUE_DIR)
 log("loaded pack '" .. MANIFEST.name .. "' v" .. MANIFEST.version)
+log("loaded error_codes (" .. EXPECTED_ERROR_CODE_COUNT .. " codes)")
 
 -- ─── Per-session state ──────────────────────────────────────────────────────
 
@@ -327,7 +351,7 @@ end
 -- Build list payloads with item-boundary byte tracking.
 -- Returns either:
 --   { ok = true,  items, total, returned, truncated, response_bytes }
---   { ok = false, code = "RESPONSE_TOO_LARGE", message = ... }
+--   { ok = false, code = ERRS.RESPONSE_TOO_LARGE, message = ... }
 --
 -- Why item-boundary, not byte-level: chopping the encoded JSON string mid-
 -- token produces malformed responses. We instead encode each descriptor
@@ -353,7 +377,7 @@ local function read_selection(limit_raw)
         if #items == 0 then
           return {
             ok      = false,
-            code    = "RESPONSE_TOO_LARGE",
+            code    = ERRS.RESPONSE_TOO_LARGE,
             message = response_too_large_message("selected item"),
           }
         end
@@ -395,7 +419,7 @@ local function read_tracks(limit_raw, include_fx)
         if #items == 0 then
           return {
             ok      = false,
-            code    = "RESPONSE_TOO_LARGE",
+            code    = ERRS.RESPONSE_TOO_LARGE,
             message = response_too_large_message("track"),
           }
         end
@@ -451,7 +475,7 @@ local function read_regions(limit_raw)
           if #items == 0 then
             return {
               ok      = false,
-              code    = "RESPONSE_TOO_LARGE",
+              code    = ERRS.RESPONSE_TOO_LARGE,
               message = response_too_large_message("region"),
             }
           end
@@ -482,7 +506,7 @@ local function params_invalid(message)
   return {
     ok = false,
     error = {
-      code        = "PARAMS_INVALID",
+      code        = ERRS.PARAMS_INVALID,
       message     = message,
       recoverable = true,
     },
@@ -547,7 +571,7 @@ function DISPATCH.get_state(cmd)
     return {
       ok = false,
       error = {
-        code        = "SCOPE_NOT_IMPLEMENTED",
+        code        = ERRS.SCOPE_NOT_IMPLEMENTED,
         message     = "get_state scope '" .. scope .. "' is not implemented in v0.1",
         recoverable = true,
       },
@@ -620,7 +644,7 @@ function DISPATCH.get_state(cmd)
   return {
     ok = false,
     error = {
-      code        = "INTERNAL_ERROR",
+      code        = ERRS.INTERNAL_ERROR,
       message     = "Unhandled get_state scope: " .. tostring(scope),
       recoverable = false,
     },
@@ -696,7 +720,7 @@ local function template_error_envelope(err_obj)
   return {
     ok = false,
     error = {
-      code        = "INTERNAL_ERROR",
+      code        = ERRS.INTERNAL_ERROR,
       message     = "Handler crashed: " .. tostring(err_obj),
       recoverable = false,
     },
@@ -837,7 +861,7 @@ function DISPATCH.template(cmd)
     return {
       ok = false,
       error = {
-        code        = "TEMPLATE_NOT_FOUND",
+        code        = ERRS.TEMPLATE_NOT_FOUND,
         message     = "call_template requires a non-empty `name`",
         recoverable = true,
       },
@@ -849,7 +873,7 @@ function DISPATCH.template(cmd)
     return {
       ok = false,
       error = {
-        code        = "TEMPLATE_NOT_FOUND",
+        code        = ERRS.TEMPLATE_NOT_FOUND,
         message     = "No template named '" .. name .. "' in pack '" .. MANIFEST.name .. "'",
         recoverable = true,
       },
@@ -863,6 +887,7 @@ function DISPATCH.template(cmd)
     -- `params.x == ctx.json.null`. See docs/TEMPLATE_SPEC.md
     -- § Nullable Params.
     json        = json,
+    errs        = ERRS,
   }
   local params = cmd.params or {}
   local expected_delta = cmd.expected_delta
@@ -919,7 +944,7 @@ function DISPATCH.template(cmd)
     local reason = verify.check(expected_delta, changed_for_verify, delta, entry.entity_kind, changed_total)
     if reason then
       return template_error_envelope({
-        code = "VERIFY_FAILED",
+        code = ERRS.VERIFY_FAILED,
         message = "Template '" .. name .. "' produced delta inconsistent with expectedDelta. "
           .. reason .. ". The mutation has been applied — call get_state to inspect actual state.",
         recoverable = false,
@@ -942,7 +967,7 @@ local function dispatch(cmd)
     return {
       ok = false,
       error = {
-        code        = "TEMPLATE_NOT_FOUND",
+        code        = ERRS.TEMPLATE_NOT_FOUND,
         message     = "Unknown command kind: " .. tostring(kind),
         recoverable = true,
       },
@@ -954,7 +979,7 @@ local function dispatch(cmd)
     return {
       ok = false,
       error = {
-        code        = "INTERNAL_ERROR",
+        code        = ERRS.INTERNAL_ERROR,
         message     = "Handler error: " .. tostring(result_or_err),
         recoverable = false,
       },
@@ -1014,7 +1039,7 @@ local function process_one()
       id           = id,
       ok           = false,
       error        = {
-        code        = "INTERNAL_ERROR",
+        code        = ERRS.INTERNAL_ERROR,
         message     = "Could not read claimed command file",
         recoverable = false,
       },
@@ -1027,7 +1052,7 @@ local function process_one()
         id           = id,
         ok           = false,
         error        = {
-          code        = "INTERNAL_ERROR",
+          code        = ERRS.INTERNAL_ERROR,
           message     = "Bad command JSON: " .. tostring(cmd_or_err),
           recoverable = false,
         },
@@ -1165,7 +1190,7 @@ local function reap_stale_running()
       ok = false,
       completed_at = iso_now(),
       error = {
-        code        = "INTERNAL_ERROR",
+        code        = ERRS.INTERNAL_ERROR,
         message     = "Bridge restarted while this command was running",
         recoverable = true,
       },
@@ -1187,7 +1212,8 @@ end
 reap_stale_running()
 
 log("bridge ready (generation " .. MY_GENERATION
-  .. ") — templates: " .. (function()
+  .. ") — loaded error_codes (" .. EXPECTED_ERROR_CODE_COUNT
+  .. " codes) — templates: " .. (function()
   local names = {}
   for n in pairs(MANIFEST.templates) do names[#names + 1] = n end
   table.sort(names)

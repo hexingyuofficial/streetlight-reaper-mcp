@@ -33,9 +33,15 @@
 --   (handle, nil)              — success
 --   (nil, error_code, msg)     — typed failure; bubbles to dispatcher
 --
--- Error codes match packages/core/src/errors.ts. Strings only — no objects.
+-- Error codes come from the generated error_codes.lua table attached by the
+-- bridge at startup. Return values are still plain strings, never objects.
 
 local M = {}
+local ERRS = nil
+
+function M.attach_errs(errs)
+  ERRS = errs
+end
 
 local function parse_selected_index(s)
   -- "selected:N" where N is a non-negative integer.
@@ -106,14 +112,14 @@ local function resolve_selected(index)
   local total = reaper.CountSelectedMediaItems(0)
   if index < 0 or index >= total then
     return nil,
-      "ITEM_NOT_FOUND",
+      ERRS.ITEM_NOT_FOUND,
       "selected:" .. tostring(index) .. " out of range (selection has "
         .. total .. " item" .. (total == 1 and "" or "s") .. ")"
   end
   local item = reaper.GetSelectedMediaItem(0, index)
   if not item then
     return nil,
-      "ITEM_NOT_FOUND",
+      ERRS.ITEM_NOT_FOUND,
       "REAPER returned nil for selected:" .. tostring(index)
   end
   return item, nil
@@ -130,7 +136,7 @@ local function resolve_guid(guid)
       return item, nil
     end
   end
-  return nil, "ITEM_NOT_FOUND", "No item with GUID " .. tostring(guid)
+  return nil, ERRS.ITEM_NOT_FOUND, "No item with GUID " .. tostring(guid)
 end
 
 local function resolve_last_result_item(index, last_result)
@@ -141,19 +147,19 @@ local function resolve_last_result_item(index, last_result)
   -- tools" in IMPLEMENTATION_PLAN.md.
   if not last_result or type(last_result.items) ~= "table" then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result is unavailable in this bridge session"
   end
   local total = #last_result.items
   if total == 0 then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result:item:" .. tostring(index)
         .. " — no mutating call has produced changed_ids yet this session"
   end
   if index < 0 or index >= total then
     return nil,
-      "ITEM_NOT_FOUND",
+      ERRS.ITEM_NOT_FOUND,
       "last_result:item:" .. tostring(index) .. " out of range "
         .. "(last_result has " .. total
         .. " item" .. (total == 1 and "" or "s") .. ")"
@@ -165,14 +171,14 @@ local function resolve_last_result_item(index, last_result)
   -- rather than handing back a stale handle.
   if type(entry) ~= "string" then
     return nil,
-      "INTERNAL_ERROR",
+      ERRS.INTERNAL_ERROR,
       "last_result.items[" .. tostring(index + 1)
         .. "] is " .. type(entry) .. ", expected string"
   end
   local guid = parse_guid_ref(entry)
   if not guid then
     return nil,
-      "INTERNAL_ERROR",
+      ERRS.INTERNAL_ERROR,
       "last_result entry is not a guid ref: " .. tostring(entry)
   end
   return resolve_guid(guid)
@@ -191,7 +197,7 @@ local function resolve_track_item(track_name, index)
       local item_count = reaper.CountTrackMediaItems(track)
       if index < 0 or index >= item_count then
         return nil,
-          "ITEM_NOT_FOUND",
+          ERRS.ITEM_NOT_FOUND,
           "track:" .. track_name .. "/item:" .. tostring(index)
             .. " out of range (track has " .. item_count
             .. " item" .. (item_count == 1 and "" or "s") .. ")"
@@ -199,14 +205,14 @@ local function resolve_track_item(track_name, index)
       local item = reaper.GetTrackMediaItem(track, index)
       if not item then
         return nil,
-          "ITEM_NOT_FOUND",
+          ERRS.ITEM_NOT_FOUND,
           "REAPER returned nil for track:" .. track_name
             .. "/item:" .. tostring(index)
       end
       return item, nil
     end
   end
-  return nil, "TRACK_NOT_FOUND", "No track named '" .. track_name .. "'"
+  return nil, ERRS.TRACK_NOT_FOUND, "No track named '" .. track_name .. "'"
 end
 
 local function resolve_track_by_name(track_name)
@@ -218,7 +224,7 @@ local function resolve_track_by_name(track_name)
     local _, name = reaper.GetSetMediaTrackInfo_String(track, "P_NAME", "", false)
     if name == track_name then return track, nil end
   end
-  return nil, "TRACK_NOT_FOUND", "No track named '" .. track_name .. "'"
+  return nil, ERRS.TRACK_NOT_FOUND, "No track named '" .. track_name .. "'"
 end
 
 local function resolve_track_guid(guid)
@@ -230,25 +236,25 @@ local function resolve_track_guid(guid)
     local _, this_guid = reaper.GetSetMediaTrackInfo_String(track, "GUID", "", false)
     if this_guid == guid then return track, nil end
   end
-  return nil, "TRACK_NOT_FOUND", "No track with GUID " .. tostring(guid)
+  return nil, ERRS.TRACK_NOT_FOUND, "No track with GUID " .. tostring(guid)
 end
 
 local function resolve_last_result_track(index, last_result)
   if not last_result or type(last_result.tracks) ~= "table" then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result is unavailable in this bridge session"
   end
   local total = #last_result.tracks
   if total == 0 then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result:track:" .. tostring(index)
         .. " — no mutating call has produced changed tracks yet this session"
   end
   if index < 0 or index >= total then
     return nil,
-      "TRACK_NOT_FOUND",
+      ERRS.TRACK_NOT_FOUND,
       "last_result:track:" .. tostring(index) .. " out of range "
         .. "(last_result has " .. total
         .. " track" .. (total == 1 and "" or "s") .. ")"
@@ -256,14 +262,14 @@ local function resolve_last_result_track(index, last_result)
   local entry = last_result.tracks[index + 1]
   if type(entry) ~= "string" then
     return nil,
-      "INTERNAL_ERROR",
+      ERRS.INTERNAL_ERROR,
       "last_result.tracks[" .. tostring(index + 1)
         .. "] is " .. type(entry) .. ", expected string"
   end
   local guid = parse_guid_ref(entry)
   if not guid then
     return nil,
-      "INTERNAL_ERROR",
+      ERRS.INTERNAL_ERROR,
       "last_result track entry is not a guid ref: " .. tostring(entry)
   end
   return resolve_track_guid(guid)
@@ -284,25 +290,25 @@ local function resolve_region_name(name)
     end
     i = i + 1
   end
-  return nil, "REGION_NOT_FOUND", "No region named '" .. name .. "'"
+  return nil, ERRS.REGION_NOT_FOUND, "No region named '" .. name .. "'"
 end
 
 local function resolve_last_result_region(index, last_result)
   if not last_result or type(last_result.regions) ~= "table" then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result is unavailable in this bridge session"
   end
   local total = #last_result.regions
   if total == 0 then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result:region:" .. tostring(index)
         .. " — no mutating call has produced changed regions yet this session"
   end
   if index < 0 or index >= total then
     return nil,
-      "REGION_NOT_FOUND",
+      ERRS.REGION_NOT_FOUND,
       "last_result:region:" .. tostring(index) .. " out of range "
         .. "(last_result has " .. total
         .. " region" .. (total == 1 and "" or "s") .. ")"
@@ -310,7 +316,7 @@ local function resolve_last_result_region(index, last_result)
   local entry = last_result.regions[index + 1]
   if type(entry) ~= "string" then
     return nil,
-      "INTERNAL_ERROR",
+      ERRS.INTERNAL_ERROR,
       "last_result.regions[" .. tostring(index + 1)
         .. "] is " .. type(entry) .. ", expected string"
   end
@@ -319,7 +325,7 @@ local function resolve_last_result_region(index, last_result)
   local name = parse_region_name(entry)
   if not name then
     return nil,
-      "INTERNAL_ERROR",
+      ERRS.INTERNAL_ERROR,
       "last_result region entry is not a region:Name ref: " .. tostring(entry)
   end
   return resolve_region_name(name)
@@ -333,7 +339,7 @@ end
 -- (the resolver returns REF_INVALID with a useful message).
 function M.resolve_item(ref, last_result)
   if type(ref) ~= "string" or ref == "" then
-    return nil, "REF_INVALID", "Item reference must be a non-empty string"
+    return nil, ERRS.REF_INVALID, "Item reference must be a non-empty string"
   end
 
   local sel_idx = parse_selected_index(ref)
@@ -353,12 +359,12 @@ function M.resolve_item(ref, last_result)
   -- have to guess.
   if ref:match("^track:") and not ref:find("/item:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a track reference; expected an item reference"
   end
   if ref:match("^last_result:track:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a track reference; expected an item reference"
   end
 
@@ -367,12 +373,12 @@ function M.resolve_item(ref, last_result)
   -- it actually fed in, not a generic "unrecognized" message.
   if ref:match("^region:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a region reference; expected an item reference"
   end
   if ref:match("^last_result:region:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a region reference; expected an item reference"
   end
 
@@ -380,11 +386,11 @@ function M.resolve_item(ref, last_result)
   -- mutating template ships for it in v0.1).
   if ref:match("^last_result:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "last_result entity not implemented in v0.1: " .. ref
   end
 
-  return nil, "REF_INVALID", "Unrecognized item reference: " .. ref
+  return nil, ERRS.REF_INVALID, "Unrecognized item reference: " .. ref
 end
 
 -- Resolve a logical track reference to a REAPER MediaTrack handle.
@@ -393,7 +399,7 @@ end
 -- Returns (track, nil) on success; (nil, code, message) on failure.
 function M.resolve_track(ref, last_result)
   if type(ref) ~= "string" or ref == "" then
-    return nil, "REF_INVALID", "Track reference must be a non-empty string"
+    return nil, ERRS.REF_INVALID, "Track reference must be a non-empty string"
   end
 
   local guid = parse_guid_ref(ref)
@@ -409,7 +415,7 @@ function M.resolve_track(ref, last_result)
   if ref:match("^selected:") or ref:match("^last_result:item:")
      or ref:match("/item:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is an item reference; expected a track reference"
   end
 
@@ -417,16 +423,16 @@ function M.resolve_track(ref, last_result)
   -- type triangle returns helpful "you meant region" messages now.
   if ref:match("^region:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a region reference; expected a track reference"
   end
   if ref:match("^last_result:region:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a region reference; expected a track reference"
   end
 
-  return nil, "REF_INVALID", "Unrecognized track reference: " .. ref
+  return nil, ERRS.REF_INVALID, "Unrecognized track reference: " .. ref
 end
 
 -- Resolve a logical region reference to a `{ index, pos, rgnend, name }`
@@ -439,13 +445,13 @@ end
 -- message names that limitation so agents stop searching for GUIDs.
 function M.resolve_region(ref, last_result)
   if type(ref) ~= "string" or ref == "" then
-    return nil, "REF_INVALID", "Region reference must be a non-empty string"
+    return nil, ERRS.REF_INVALID, "Region reference must be a non-empty string"
   end
 
   local guid = parse_guid_ref(ref)
   if guid ~= nil then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "regions don't support GUID refs in v0.1; use region:Name or last_result:region:N"
   end
 
@@ -460,16 +466,16 @@ function M.resolve_region(ref, last_result)
   if ref:match("^selected:") or ref:match("^last_result:item:")
      or ref:match("/item:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is an item reference; expected a region reference"
   end
   if ref:match("^track:") or ref:match("^last_result:track:") then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "'" .. ref .. "' is a track reference; expected a region reference"
   end
 
-  return nil, "REF_INVALID", "Unrecognized region reference: " .. ref
+  return nil, ERRS.REF_INVALID, "Unrecognized region reference: " .. ref
 end
 
 M.RESOLVERS = {
@@ -482,7 +488,7 @@ function M.resolve(entity_kind, ref, last_result)
   local resolver = M.RESOLVERS[entity_kind]
   if not resolver then
     return nil,
-      "REF_INVALID",
+      ERRS.REF_INVALID,
       "No resolver for entity kind '" .. tostring(entity_kind) .. "' in v0.1"
   end
   return resolver(ref, last_result)

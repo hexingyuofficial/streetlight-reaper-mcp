@@ -41,7 +41,7 @@ Streetlight 争的是**唯一一个可信、可验证、可无限生长的 REAPE
 | I1 | MCP 工具面固定为 5：`ping` / `get_state` / `call_template` / `list_templates` / `list_recipes`。能力增长**不得**新增工具。 | `packages/mcp-server/src/index.ts` | 代码评审 + 测试断言工具数 |
 | I2 | `Result<T>` 严格两态（`Ok<T>` \| `Err`），**永不抛异常**给 agent。 | `packages/core/src/result.ts` | 类型 + 现有测试 |
 | I3 | `call_template` 成功信封锁定为 `{ template, changed_count, changed_ids[≤50], truncated }`。handler 多返回的字段在 bridge 边界**被丢弃**。 | `streetlight_bridge.lua` `build_template_envelope` | bridge 强制 + 单测 |
-| I4 | 错误码是 TS↔Lua **同一套字符串**。Lua 写 result JSON 必须用 `errors.ts` 里的码。 | `packages/core/src/errors.ts` ↔ `refs.lua`/`*.lua` | 共享常量来源（见 H5） |
+| I4 | 错误码是 TS↔Lua **同一套字符串**。Lua 写 result JSON 必须引用由 `errors.ts` 生成的 `error_codes.lua` 常量。 | `packages/core/src/errors.ts` ↔ `reaper/packs/core/error_codes.lua` ↔ `streetlight_bridge.lua`/handlers | 共享常量来源 + literal audit（见 H5 / Slice 05） |
 | I5 | ref 生命周期：`selected:N`（快照）/ `guid:{...}`（跨命令稳定）/ `last_result:<kind>:N`（会话内）/ `track:Name`。多步配方**禁止**跨命令依赖 `selected:N`。 | `reaper/packs/core/refs.lua`、`ARCHITECTURE.md` | resolver + 测试 |
 | I6 | risk 默认策略**拒绝** `destructive` 与 `unsafe_eval`。`unsafe_eval` 永远默认关。 | `packages/core/src/risk.ts` | `defaultPolicy()` + 测试 |
 | I7 | 每个 mutating 模板进 undo block；read-only 路径（`ping`/`get_state`）**不得**触碰 `LAST_RESULT`。 | `manifest.lua` `undoable`/`undo_flags`、bridge `finalize_template` | manifest 数据 + 测试 |
@@ -207,7 +207,7 @@ entity_kind）、`errors.ts`（码）。新增模板要在多处接线。
    校验对齐）：包含 name / pack / risk / mutates / undoable / idempotent /
    entity_kind / params(Zod) / result / `expectedDelta`(H2) / `examples` /
    `reads`(读哪些字段) / `writes`(写哪些字段)。
-2. 错误码集合从 `errors.ts` 导出为**生成产物**，供 Lua 侧引用（消除 I4 的手抄风险）。
+2. 错误码集合从 `errors.ts` 导出为**生成产物**，供 Lua 侧引用（消除 I4 的手抄风险）。Slice 05 已让 bridge/refs/handlers 运行时引用 `ERRS.*` / `ctx.errs.*`，并用 audit 禁止 runtime Lua 重新写入错误码字面量。
 3. `list_templates` 返回富化描述符（含 examples / risk / expectedDelta 摘要），
    让 agent 无需读源码即可正确调用。
 
@@ -219,6 +219,7 @@ entity_kind）、`errors.ts`（码）。新增模板要在多处接线。
 
 **验收**：
 - 任一模板的 entity_kind/risk 在 TS 与 Lua 不一致时，CI 校验脚本**报错**。
+- Lua runtime 文件出现 `code = "FOO"` / `raise("FOO")` / `raise(code or "FOO")` / `return nil, "FOO"` 等错误码字面量时，error-code audit **报错**。
 - `list_templates` 输出含每模板的 example 调用与 expectedDelta 摘要。
 
 ---

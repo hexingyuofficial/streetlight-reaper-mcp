@@ -8,7 +8,7 @@
 --           min(1) — name-content rules (path separators, NUL, `$`) live
 --           in lib/names.lua and are shared with render.lua's render-time
 --           re-validation (Step 7 B1). REGION_NAME_INVALID stays Lua-only.
---   `ctx` has `refs`, `last_result`, `json`.
+--   `ctx` has `refs`, `last_result`, `json`, `errs`.
 --
 -- Errors raise via `error({ code = ..., message = ... })`. Dispatcher
 -- translates into typed envelopes.
@@ -72,20 +72,21 @@ end
 --   * already taken       → REGION_NAME_TAKEN (no AddProjectMarker2 call —
 --                            preserves the "error → no change" contract)
 function M.region_create(params, ctx)
+  local errs = ctx.errs
   local name_ok, name_msg = names.validate_region_name(params.name)
   if not name_ok then
-    raise("REGION_NAME_INVALID", name_msg)
+    raise(errs.REGION_NAME_INVALID, name_msg)
   end
 
   if find_region_by_name(params.name) then
-    raise("REGION_NAME_TAKEN",
+    raise(errs.REGION_NAME_TAKEN,
       "A region named '" .. params.name .. "' already exists")
   end
 
   local rstart, rend
   if params.item_id ~= nil then
     local item, code, msg = ctx.refs.resolve_item(params.item_id, ctx.last_result)
-    if not item then raise(code or "ITEM_NOT_FOUND", msg or "Item not found") end
+    if not item then raise(code or errs.ITEM_NOT_FOUND, msg or "Item not found") end
     local pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
     local len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
     rstart = pos
@@ -104,7 +105,7 @@ function M.region_create(params, ctx)
   -- name (indices renumber on any marker delete).
   local idx = reaper.AddProjectMarker2(0, true, rstart, rend, params.name, -1, 0)
   if idx < 0 then
-    raise("INTERNAL_ERROR",
+    raise(errs.INTERNAL_ERROR,
       "AddProjectMarker2 returned " .. tostring(idx) .. " for region '"
         .. params.name .. "'")
   end

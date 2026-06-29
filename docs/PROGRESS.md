@@ -11,8 +11,46 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 04 ✅ live-smoked / commit-ready
+**Kernel hardening Slice 05 ✅ live-smoked / uncommitted
 (2026-06-29).** Architect packet lives at
+`docs/plans/SLICE_05_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 05 closes the H5
+error-code activation gap left by Slice 03: the bridge now dofile's
+generated `reaper/packs/core/error_codes.lua`, validates the 22-code
+table at boot, wires it into `refs.lua` via `attach_errs(ERRS)`, and
+passes `ctx.errs = ERRS` to every handler. Lua bridge, refs, and
+templates now use generated `ERRS.*` / `ctx.errs.*` constants instead
+of string-literal error codes. `scripts/error-codes.mjs check` now
+rejects runtime Lua literal forms (`code = "FOO"`,
+`raise("FOO")`, `raise(code or "FOO")`, `return nil, "FOO"`,
+including single-quoted variants) while still checking generated
+freshness. It also scans generated-code member references (`ERRS.*`,
+`errs.*`, `ctx.errs.*`) so misspelled constants fail statically.
+Reviewer found both audit gaps after the first Slice 05 code drop;
+they are now regression-tested. Focused static verification is green:
+`npm run check:error-codes-fresh` → 22 codes fresh + zero literal
+usage / zero unknown generated-code references; focused
+`error-codes` + `lua-structure` tests → 15/15.
+Full static baseline is green: `npm test` 248/248, `npm run build`
+clean, `npm run check:manifest` green, `npm run
+check:error-codes-fresh` green, and `git diff --check` clean. REAPER
+live smoke passed on REAPER 7.71/macOS-arm64 after a full quit/reopen
+and current `start_bridge.lua` run: console showed
+`loaded error_codes (22 codes)` both as a standalone startup line and
+inside the bridge ready line. Focused error paths returned
+`ITEM_NOT_FOUND`, `MEDIA_NOT_FOUND`, `REGION_NAME_INVALID`,
+`REF_INVALID`, `REGION_NOT_FOUND`, and raw-queue `VERIFY_FAILED`
+without any `INTERNAL_ERROR` degradation. `VERIFY_FAILED` was
+`recoverable:false`, included structured `{expected, actual,
+changed_count}` details, and carried the required `call get_state`
+recovery phrase. Happy `track_create` and follow-up
+`track_rename last_result:track:0` confirmed the locked success
+envelope and `LAST_RESULT` behavior before and after the forced
+verification failure.
+
+**Kernel hardening Slice 04 ✅ live-smoked, committed, and pushed
+(2026-06-29, `d3f8fe7`).** Architect packet lives at
 `docs/plans/SLICE_04_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 04 is the H2
@@ -57,7 +95,8 @@ generates `reaper/packs/core/error_codes.lua` from
 including `raise(code or "FOO", ...)` fallback forms and
 `return nil, "FOO", ...` resolver returns. Runtime behavior is
 intentionally unchanged: no bridge changes, no Lua handler changes, no
-`manifest.lua` changes, and `error_codes.lua` is not dofile'd yet.
+`manifest.lua` changes, and `error_codes.lua` was not dofile'd yet.
+Slice 05 is the follow-up that activates `ERRS.*` at runtime.
 M0 is green: `npm test` 237/237, `npm run build` clean, `npm run
 check:manifest` green, `npm run check:error-codes-fresh` green, and
 `git diff --check` clean. M1-M3 live/minimal activity smoke also
@@ -539,17 +578,114 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
+### Kernel hardening Slice 05 (2026-06-29) — Lua error-code constants activation ✅
+
+Scope: close the H5 follow-up from
+`docs/plans/SLICE_05_ARCHITECT_PLAN.md`. Slice 03 generated
+`reaper/packs/core/error_codes.lua` and added static redlines; Slice
+05 makes that generated table the runtime source used by the bridge,
+refs, and handlers. User-facing behavior is intended to be unchanged:
+same wire codes, same messages, same recoverability, same envelope
+shapes.
+
+What changed:
+
+- `reaper/streetlight_bridge.lua` — dofile's
+  `packs/core/error_codes.lua` at boot; validates key/value identity
+  and the expected 22-code count; calls `refs.attach_errs(ERRS)`;
+  injects `ctx.errs = ERRS` into template handlers; replaces bridge
+  internal literal codes (`PARAMS_INVALID`, `TEMPLATE_NOT_FOUND`,
+  `VERIFY_FAILED`, etc.) with `ERRS.*`. The bridge ready log now
+  includes `loaded error_codes (22 codes)` so live smoke can prove the
+  new boot path is active.
+- `reaper/packs/core/refs.lua` — exposes `M.attach_errs(errs)` and
+  returns generated `ERRS.*` constants from all resolver failure
+  paths while preserving the public resolver API and `(nil, code,
+  message)` return convention.
+- `reaper/packs/core/templates/{item,track,region,media,render}.lua`
+  — handlers keep their local `raise(code, message)` helpers, but the
+  code argument now comes from `ctx.errs.*` or from resolver-returned
+  codes. Helpers that can raise internal errors receive `errs`
+  explicitly instead of dofile'ing the generated module.
+- `scripts/error-codes.mjs` — `check` still verifies generated
+  freshness and unknown Lua codes, and now rejects known Lua
+  string-literal error-code usage in runtime shapes:
+  `code = "FOO"`, `raise("FOO")`, `raise(code or "FOO")`, and
+  `return nil, "FOO"`. The scan includes
+  `reaper/streetlight_bridge.lua` and `reaper/packs/core/**/*.lua`
+  except the generated `error_codes.lua`.
+- `scripts/__tests__/error-codes.test.mjs` and
+  `scripts/__tests__/lua-structure.test.mjs` — guard the stricter
+  audit, bridge boot wiring, `ctx.errs`, refs attachment, and the
+  no-runtime-literals invariant.
+
+Decisions locked:
+
+- D1 audit strictness: no runtime literal allowances beyond generated
+  `error_codes.lua`; boot failures use plain `error("...")` strings,
+  not protocol error-code literals.
+- D2 injection path: bridge dofile once, pass `ctx.errs` to handlers,
+  and attach the same table to `refs.lua`.
+- D3 handler raise helpers: keep current local helper shape; do not
+  introduce a new global raise abstraction until H6 scaffold/factory
+  work.
+
+Verification so far:
+
+- `npm run check:error-codes-fresh` → `Streetlight error codes fresh
+  (22 codes).` This now means both freshness and zero forbidden
+  runtime literal usage / zero unknown generated-code references.
+- Focused tests: `npm test --
+  scripts/__tests__/error-codes.test.mjs
+  scripts/__tests__/lua-structure.test.mjs` → 15/15 green.
+- Reviewer follow-up fixed two audit holes: single-quoted Lua
+  error-code literals now fail the scan, and misspelled `ERRS.*` /
+  `errs.*` / `ctx.errs.*` references now fail as unknown codes.
+- Full static baseline: `npm test` → 248/248 green,
+  `npm run build` → clean, `npm run check:manifest` → green,
+  `npm run check:error-codes-fresh` → green, `git diff --check` →
+  clean.
+- Live REAPER smoke passed on REAPER 7.71/macOS-arm64 after full
+  REAPER quit/reopen and current `start_bridge.lua` run. Console
+  proof:
+  `[streetlight] loaded error_codes (22 codes)` and
+  `bridge ready (generation 1) — loaded error_codes (22 codes)`.
+- Focused live paths all returned the expected typed codes with no
+  `INTERNAL_ERROR` degradation:
+  `ITEM_NOT_FOUND` (`item_pitch selected:99`),
+  `MEDIA_NOT_FOUND` (`media_import path:"/no/such/file"`),
+  `REGION_NAME_INVALID` (`region_create name:"a/b"`),
+  `REF_INVALID` (`track_rename selected:0` cross-type),
+  `REGION_NOT_FOUND` (`render_region region:doesnotexist` to an
+  existing temp output dir), and raw-queue `VERIFY_FAILED` for
+  `track_rename` with forced
+  `expected_delta={count:1,creates:true}`.
+- Raw mismatch details were
+  `{actual:{items:0,regions:0,tracks:0}, changed_count:1,
+  expected:{count:1,creates:true}}`, `recoverable:false`, with the
+  required "mutation has been applied — call get_state" recovery
+  phrase.
+- Happy path: `track_create name:"smoke05-live-1782748111423"`
+  returned the locked envelope
+  `{template:"track_create", changed_count:1,
+  changed_ids:["guid:{AF0C65BE-0D4A-3B4D-BFE8-4A2A6622F0CD}"],
+  truncated:false}`. `track_rename last_result:track:0` before and
+  after the forced `VERIFY_FAILED` hit the same GUID, confirming
+  normal `LAST_RESULT` behavior. Temporary render smoke dir was
+  removed; the smoke track remains in the open REAPER project for
+  manual undo/delete.
+
 
 
 ### v0.1 progress at a glance
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-04 ✅ | Slice 04 commit/push |
-| Tests | 244/244 green | none |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-05 ✅ | Second-Mac smoke / release tag; commit only on explicit user ask |
+| Tests | 248/248 green + Slice 05 REAPER smoke ✅ | none for Slice 05 |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 03 is now the live
-edge.** Step 6 (render) closed
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 05 is now
+live-smoked.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
 discovery + end-to-end demo) shipped 2026-06-29 in the same window:
@@ -585,18 +721,16 @@ gate passed live on this Mac (console: `bridge ready (generation
 tests). The second-Mac smoke per `docs/CROSS_MAC_SMOKE.md` is the
 remaining gate before any release tag. Kernel Slice 01 was committed
 and pushed at `baa13bd`; Slice 02 was committed and pushed at
-`e93d39e`; Slice 03 was committed and pushed at `4e80839`. Slice 04
-is the current uncommitted, live-smoked code-drop adding H2 structural
-verification.
+`e93d39e`; Slice 03 was committed and pushed at `4e80839`; Slice 04
+was committed and pushed at `d3f8fe7`. Slice 05 is the current
+uncommitted live-smoked H5 error-code activation slice.
 
 ### Next action
 
-1. **Commit Kernel Slice 04 when the user asks.** Current code
-   baseline: `npm test` 244/244, build clean, `check:manifest` green,
-   `check:error-codes-fresh` green, `git diff --check` clean, focused
-   reviewer pass, and REAPER live smoke green.
-2. **Second-Mac smoke / v0.1 release tag remains available after
-   Slice 04 closes.** Setup/launcher reproducer is ready;
+1. **Commit/push Slice 05 only if the user explicitly asks.** It is
+   static-green and REAPER-smoked, but versioning remains user-owned.
+2. **Second-Mac smoke / v0.1 release tag remains available.**
+   Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 
 
@@ -3257,13 +3391,13 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 04 is live-smoked and commit-ready.** Read
-   `docs/plans/SLICE_04_ARCHITECT_PLAN.md` before touching code.
-   Checks are green (`npm test` 244/244, build clean,
+2. **Kernel hardening Slice 05 is live-smoked and uncommitted.** Read
+   `docs/plans/SLICE_05_ARCHITECT_PLAN.md` before touching code.
+   Checks are green (`npm test` 248/248, build clean,
    `check:manifest` green, `check:error-codes-fresh` green,
-   `git diff --check` clean), focused reviewer pass is clean, and
-   REAPER live smoke passed. Do not commit unless the user explicitly
-   asks.
+   `git diff --check` clean), and REAPER smoke passed with
+   `loaded error_codes (22 codes)` in the ready line. Do not commit
+   unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

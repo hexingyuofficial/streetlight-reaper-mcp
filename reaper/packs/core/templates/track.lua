@@ -3,7 +3,7 @@
 -- Handler convention matches templates/item.lua:
 --   `function(params, ctx) -> { changed_ids = {...} }`
 --   `params` already passed the TS Zod schema.
---   `ctx` has `refs`, `last_result`, `json` (sentinel access).
+--   `ctx` has `refs`, `last_result`, `json` (sentinel access), `errs`.
 --
 -- Errors raise via `error({ code = ..., message = ... })`.
 -- Dispatcher translates into typed envelopes.
@@ -18,10 +18,10 @@ local function raise(code, message)
   error({ code = code, message = message })
 end
 
-local function get_track_guid_ref(track)
+local function get_track_guid_ref(track, errs)
   local _, guid = reaper.GetSetMediaTrackInfo_String(track, "GUID", "", false)
   if not guid or guid == "" then
-    raise("INTERNAL_ERROR", "REAPER returned no GUID for the mutated track")
+    raise(errs.INTERNAL_ERROR, "REAPER returned no GUID for the mutated track")
   end
   return "guid:" .. guid
 end
@@ -46,10 +46,11 @@ end
 -- passing the current track count appends. `wantDefaults=true` so the
 -- track inherits the user's defaults (volume, FX chain, etc.).
 function M.track_create(params, ctx)
+  local errs = ctx.errs
   if params.reuse_existing then
     local existing = find_track_by_name(params.name)
     if existing then
-      return { changed_ids = { get_track_guid_ref(existing) } }
+      return { changed_ids = { get_track_guid_ref(existing, errs) } }
     end
   end
 
@@ -62,7 +63,7 @@ function M.track_create(params, ctx)
   reaper.InsertTrackAtIndex(insert_at, true)
   local track = reaper.GetTrack(0, insert_at)
   if not track then
-    raise("INTERNAL_ERROR", "InsertTrackAtIndex did not produce a track at index " .. tostring(insert_at))
+    raise(errs.INTERNAL_ERROR, "InsertTrackAtIndex did not produce a track at index " .. tostring(insert_at))
   end
 
   -- Set the name. Returns (bool ok, string out); we trust the input passed
@@ -72,20 +73,21 @@ function M.track_create(params, ctx)
   reaper.TrackList_AdjustWindows(false)
   reaper.UpdateArrange()
 
-  return { changed_ids = { get_track_guid_ref(track) } }
+  return { changed_ids = { get_track_guid_ref(track, errs) } }
 end
 
 -- track_rename: resolve a track and set its P_NAME.
 function M.track_rename(params, ctx)
+  local errs = ctx.errs
   local track, code, msg = ctx.refs.resolve_track(params.track_id, ctx.last_result)
-  if not track then raise(code or "TRACK_NOT_FOUND", msg or "Track not found") end
+  if not track then raise(code or errs.TRACK_NOT_FOUND, msg or "Track not found") end
 
   reaper.GetSetMediaTrackInfo_String(track, "P_NAME", params.name, true)
   -- Track name shows in TCP/MCP headers — refresh to make it visible
   -- without the user having to click around.
   reaper.TrackList_AdjustWindows(false)
 
-  return { changed_ids = { get_track_guid_ref(track) } }
+  return { changed_ids = { get_track_guid_ref(track, errs) } }
 end
 
 return M

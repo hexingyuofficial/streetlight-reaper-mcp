@@ -1,25 +1,81 @@
-# Handoff — 2026-06-29 (Kernel Slice 04 ✅ live-smoked; H2 structural verification commit-ready)
+# Handoff — 2026-06-29 (Kernel Slice 05 ✅ live-smoked; H5 error-code constants live)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
 ## Where the project is
 
 - Path: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`, git repo on
-  branch `main`. Recent checkpoints: `baa13bd` Kernel Slice 01,
-  `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03, all committed
-  and pushed. The current working tree is **Kernel hardening Slice 04**
-  (uncommitted, live-smoked): H2 minimum structural verification
-  (`expectedDelta` descriptors, wire `expected_delta`, Lua
-  before/after count checks, typed `VERIFY_FAILED`). The user manages
-  versioning out-of-band — do
-  NOT commit, branch, push, or reset without an explicit ask. Read
-  `git log` / `git status` if you need history context; treat the
-  working tree as theirs to commit.
-- `npm test` → **244/244 green**. `npm run build` → clean.
-  `npm run check:manifest` → 11 templates aligned. `npm run
-  check:error-codes-fresh` → 22 codes fresh. `git diff --check`
-  clean.
-- **Kernel hardening Slice 04 ✅ live-smoked / commit-ready
+  branch `main`. Recent pushed checkpoints: `baa13bd` Kernel Slice
+  01, `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03, and
+  `d3f8fe7` Kernel Slice 04. The current working tree is **Kernel
+  hardening Slice 05** (uncommitted, code-done, live-smoked): H5
+  error-code constants are now live in Lua bridge/templates/refs.
+  The user manages versioning out-of-band — do NOT commit, branch,
+  push, or reset without an explicit ask. Read `git log` /
+  `git status` if you need history context; treat the working tree as
+  theirs to commit.
+- Slice 05 static baseline: `npm test` → **248/248 green**,
+  `npm run build` → clean, `npm run check:manifest` → 11 templates
+  aligned, `npm run check:error-codes-fresh` → 22 codes fresh + zero
+  forbidden Lua string-literal error-code usage, `git diff --check`
+  → clean.
+- **Kernel hardening Slice 05 ✅ live-smoked / uncommitted
+  (2026-06-29).** Scope from
+  `docs/plans/SLICE_05_ARCHITECT_PLAN.md`:
+  - `reaper/streetlight_bridge.lua` now dofile's
+    `reaper/packs/core/error_codes.lua` at boot, validates key/value
+    identity and the expected 22-code count, calls
+    `refs.attach_errs(ERRS)`, injects `ctx.errs = ERRS` into every
+    template handler, and logs `loaded error_codes (22 codes)` in the
+    ready line for live-smoke reachability.
+  - `reaper/packs/core/refs.lua` keeps the public
+    `resolve_item`/`resolve_track`/`resolve_region`/`resolve` API but
+    now returns generated `ERRS.*` constants instead of handwritten
+    strings.
+  - `reaper/packs/core/templates/{item,track,region,media,render}.lua`
+    now raise `ctx.errs.*` / resolver-returned codes. Messages,
+    recoverability, envelope shapes, and normal behavior are intended
+    to be byte-stable.
+  - `scripts/error-codes.mjs check` is stricter: it still verifies
+    generated freshness and unknown codes, and now also rejects known
+    Lua error-code string literals in runtime shapes
+    (`code = "FOO"`, `raise("FOO")`, `raise(code or "FOO")`,
+    `return nil, "FOO"`, with single-quoted forms included). It also
+    validates generated-code member references (`ERRS.*`, `errs.*`,
+    `ctx.errs.*`) so typos like `errs.PARAMS_INVALD` fail statically.
+    The scan includes
+    `reaper/streetlight_bridge.lua` plus `reaper/packs/core/**/*.lua`
+    except generated `error_codes.lua`.
+  - Reviewer pass caught two audit holes after the initial code drop:
+    single-quoted Lua literals and misspelled generated-code member
+    references. Both are now covered by tests and `check:error-codes-fresh`.
+  - Decisions locked: D1 audit strictness = no runtime literal
+    allowances beyond generated `error_codes.lua`; D2 one bridge
+    dofile + `ctx.errs`, refs via `attach_errs`; D3 keep existing
+    local `raise(code, message)` helpers, no new global raise helper.
+  - Live smoke passed on REAPER 7.71/macOS-arm64 after a full REAPER
+    quit/reopen and current `start_bridge.lua` run. Console showed
+    both `[streetlight] loaded error_codes (22 codes)` and
+    `bridge ready (generation 1) — loaded error_codes (22 codes)`.
+    Focused paths returned the expected typed codes with no
+    `INTERNAL_ERROR` degradation: `ITEM_NOT_FOUND` for
+    `item_pitch selected:99`, `MEDIA_NOT_FOUND` for a bad import
+    path, `REGION_NAME_INVALID` for `region_create name:"a/b"`,
+    `REF_INVALID` for `track_rename selected:0`,
+    `REGION_NOT_FOUND` for `render_region region:doesnotexist`, and
+    raw-queue `VERIFY_FAILED` for a forced `track_rename`
+    `expected_delta={count:1,creates:true}` mismatch. The mismatch
+    returned `recoverable:false`, details
+    `{actual:{items:0,regions:0,tracks:0}, changed_count:1,
+    expected:{count:1,creates:true}}`, and the required
+    `call get_state` recovery phrase. Happy `track_create` produced
+    `guid:{AF0C65BE-0D4A-3B4D-BFE8-4A2A6622F0CD}`, and subsequent
+    `track_rename last_result:track:0` before and after
+    `VERIFY_FAILED` hit the same GUID, confirming normal envelope and
+    `LAST_RESULT` behavior. Temporary render smoke dir was removed;
+    the smoke track remains in the open REAPER project for manual
+    undo/delete.
+- **Kernel hardening Slice 04 ✅ live-smoked / committed and pushed
   (2026-06-29).** Scope from
   `docs/plans/SLICE_04_ARCHITECT_PLAN.md`:
   - `packages/core/src/registry.ts` now owns `ExpectedDelta` v1:
@@ -102,10 +158,10 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     The audit catches `code = "FOO"`, direct `raise("FOO", ...)`,
     fallback forms such as `raise(code or "FOO", ...)`, and resolver
     returns such as `return nil, "FOO", ...`.
-  - Runtime behavior is intentionally unchanged: no bridge changes, no
-    Lua handler changes, no `manifest.lua` changes, no new tools, and
-    `error_codes.lua` is not dofile'd yet. Handler migration to
-    `errs.FOO` stays deferred.
+  - Runtime behavior was intentionally unchanged in Slice 03: no
+    bridge changes, no Lua handler changes, no `manifest.lua` changes,
+    no new tools, and `error_codes.lua` was not dofile'd yet. Slice 05
+    is the follow-up that activates `ERRS.*` at runtime.
   - Focused reviewer pass complete: no findings. Residual risk is the
     expected one for static regex-based checks (future Lua shape
     changes may require parser updates).
@@ -407,13 +463,12 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit Slice 04."** Live smoke is green. Current code
-       baseline is `npm test` 244/244 + `npm run build` clean +
-       `npm run check:manifest` green + `npm run
-       check:error-codes-fresh` green + `git diff --check` clean.
-       Commit/push only if the user explicitly asks.
+   (a) **"Commit Slice 05."** Slice 05 is static-green and
+       REAPER-smoked. Inspect `git status` / `git diff` first, then
+       commit/push only if the user explicitly asks. Do not infer
+       commit permission from the live-smoke result.
 
-   (b) **"Codex found a bug in Slice 04 or earlier."** Locked
+   (b) **"Codex found a bug in Slice 05 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -422,9 +477,10 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 244/244,
-   `npm run build` clean, `npm run check:manifest` green, `npm run
-   check:error-codes-fresh` green. The `npm run typecheck` script prints a
+2. **Tests + build baseline this window:** `npm test` 248/248,
+   `npm run build` clean, `npm run check:manifest` green,
+   `npm run check:error-codes-fresh` green, `git diff --check`
+   clean. The `npm run typecheck` script prints a
    `TS6310` "may not disable emit" line then exits 0 — pre-existing
    project setup, do not chase. The `[streetlight-mcp] done-sweep:
    readdir failed (EACCES…)` line in test output is the expected

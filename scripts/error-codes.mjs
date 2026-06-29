@@ -42,17 +42,18 @@ export function generateErrorCodesLua(codes) {
 export function findLuaErrorCodeLiterals(files) {
   const found = [];
   const patterns = [
-    /\bcode\s*=\s*"([A-Z_]+)"/g,
-    /\braise\([^)]*"([A-Z_]+)"/g,
-    /\breturn\s+nil\s*,\s*"([A-Z_]+)"/g,
+    { kind: "code-field", regex: /\bcode\s*=\s*(["'])([A-Z_]+)\1/g, codeIndex: 2 },
+    { kind: "raise", regex: /\braise\s*\(\s*(?:(?:[A-Za-z_][\w.]*)\s+or\s+)?(["'])([A-Z_]+)\1/g, codeIndex: 2 },
+    { kind: "resolver-return", regex: /\breturn\s+nil\s*,\s*(["'])([A-Z_]+)\1/g, codeIndex: 2 },
   ];
 
   for (const file of files) {
     for (const pattern of patterns) {
-      for (const match of file.text.matchAll(pattern)) {
+      for (const match of file.text.matchAll(pattern.regex)) {
         found.push({
           path: file.path,
-          code: match[1],
+          code: match[pattern.codeIndex],
+          kind: pattern.kind,
         });
       }
     }
@@ -60,11 +61,37 @@ export function findLuaErrorCodeLiterals(files) {
   return found;
 }
 
+export function findLuaErrorCodeReferences(files) {
+  const found = [];
+  const regex = /\b(?:(ctx\.errs|errs|ERRS))\.([A-Z_]+)\b/g;
+
+  for (const file of files) {
+    for (const match of file.text.matchAll(regex)) {
+      found.push({
+        path: file.path,
+        code: match[2],
+        kind: `${match[1]}-ref`,
+      });
+    }
+  }
+  return found;
+}
+
 export function diffUnknownLuaErrorCodes(files, knownCodes) {
   const known = new Set(knownCodes);
-  return findLuaErrorCodeLiterals(files)
+  return [
+    ...findLuaErrorCodeLiterals(files),
+    ...findLuaErrorCodeReferences(files),
+  ]
     .filter((hit) => !known.has(hit.code))
     .map((hit) => `${hit.path}: unknown error code ${hit.code}`);
+}
+
+export function diffLuaErrorCodeLiteralUsage(files, knownCodes) {
+  const known = new Set(knownCodes);
+  return findLuaErrorCodeLiterals(files)
+    .filter((hit) => known.has(hit.code))
+    .map((hit) => `${hit.path}: ${hit.kind} uses string-literal error code ${hit.code}; use errs.${hit.code} or ERRS.${hit.code}`);
 }
 
 async function walkLuaFiles(dir) {
@@ -87,6 +114,7 @@ async function repoPaths() {
     errorsTs: path.join(repoRoot, "packages/core/src/errors.ts"),
     luaOut: path.join(repoRoot, "reaper/packs/core/error_codes.lua"),
     luaRoot: path.join(repoRoot, "reaper/packs/core"),
+    bridgeLua: path.join(repoRoot, "reaper/streetlight_bridge.lua"),
   };
 }
 
@@ -112,8 +140,12 @@ async function cmdCheckFresh() {
     process.exit(1);
   }
 
+  const luaFilePaths = [
+    ...(await walkLuaFiles(paths.luaRoot)),
+    paths.bridgeLua,
+  ];
   const luaFiles = await Promise.all(
-    (await walkLuaFiles(paths.luaRoot)).map(async (filePath) => ({
+    luaFilePaths.map(async (filePath) => ({
       path: path.relative(paths.repoRoot, filePath),
       text: await fs.readFile(filePath, "utf8"),
     })),
@@ -122,6 +154,12 @@ async function cmdCheckFresh() {
   if (unknown.length > 0) {
     process.stderr.write("Unknown Lua error codes:\n");
     for (const entry of unknown) process.stderr.write(`- ${entry}\n`);
+    process.exit(1);
+  }
+  const usage = diffLuaErrorCodeLiteralUsage(luaFiles, codes);
+  if (usage.length > 0) {
+    process.stderr.write("Lua string-literal error code usage is forbidden:\n");
+    for (const entry of usage) process.stderr.write(`- ${entry}\n`);
     process.exit(1);
   }
 
