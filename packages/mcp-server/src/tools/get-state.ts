@@ -27,15 +27,29 @@ export const DEFAULT_GET_STATE_LIMIT = 50;
 export const MAX_GET_STATE_LIMIT = 200;
 export const MIN_GET_STATE_LIMIT = 1;
 
-export const GetStateInput = z.object({
-  scope: GetStateScope.default("selection"),
-  limit: z
-    .number()
-    .int()
-    .min(MIN_GET_STATE_LIMIT)
-    .max(MAX_GET_STATE_LIMIT)
-    .default(DEFAULT_GET_STATE_LIMIT),
-});
+export const GetStateInclude = z.enum(["fx"]);
+export type GetStateInclude = z.infer<typeof GetStateInclude>;
+
+export const GetStateInput = z
+  .object({
+    scope: GetStateScope.default("selection"),
+    limit: z
+      .number()
+      .int()
+      .min(MIN_GET_STATE_LIMIT)
+      .max(MAX_GET_STATE_LIMIT)
+      .default(DEFAULT_GET_STATE_LIMIT),
+    include: z.array(GetStateInclude).optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.include && input.include.length > 0 && input.scope !== "tracks") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["include"],
+        message: "include is only valid with scope='tracks'",
+      });
+    }
+  });
 export type GetStateInput = z.infer<typeof GetStateInput>;
 
 /** Read REAPER project state. Returns a Result; never throws. */

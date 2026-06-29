@@ -141,4 +141,18 @@ describe("Lua bridge structure", () => {
     expect(refs).toMatch(/region\s*=\s*M\.resolve_region/);
     expect(refs).toMatch(/function M\.resolve\(entity_kind, ref, last_result\)/);
   });
+
+  it("keeps Slice 02 track FX include guarded on the Lua bridge side", async () => {
+    const bridge = await readRepoFile("reaper/streetlight_bridge.lua");
+
+    expect(bridge).toMatch(/function validate_get_state_include\(params, scope\)/);
+    expect(bridge).toMatch(/function is_array_like\(t\)/);
+    expect(bridge).toMatch(/rawget\(t, "__streetlight_array"\)\s*~=\s*true then return false/);
+    expect(bridge).toMatch(/Unknown get_state include value/);
+    expect(bridge).toMatch(/include is only valid with scope='tracks'/);
+    expect(bridge).toMatch(/TrackFX_GetNamedConfigParm[^"]+"fx_ident"/s);
+    expect(bridge).toMatch(/json\.array\(fx\)/);
+    expect(bridge).not.toMatch(/rawget\(t, "__streetlight_array"\)\s*==\s*true\s*then return true/);
+    expect(bridge).not.toMatch(/TrackFX_GetFXIdent/);
+  });
 });

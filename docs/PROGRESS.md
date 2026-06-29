@@ -11,10 +11,31 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 01 ✅ live-smoked (2026-06-29), ready to commit.**
-Architect packet lives at `docs/plans/SLICE_01_ARCHITECT_PLAN.md`; the
-source master plans are `docs/plans/KERNEL_HARDENING_PLAN.md` and
-`docs/plans/KERNEL_HARDENING_EXECUTION.md`. This slice implements H1's
+**Kernel hardening Slice 02 ✅ live-smoked (2026-06-29), commit-ready.**
+Architect packet lives at
+`docs/plans/SLICE_02_ARCHITECT_PLAN.md`; the source master plans are
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 02 adds the first
+H3 projection: `get_state(tracks, include:["fx"])`. Default
+`get_state(tracks)` remains Slice-01-compatible and omits `fx`;
+the opt-in path adds `fx: []` or
+`{index,name,ident,enabled,preset_name}` descriptors per track. TS
+and Lua both enforce the strict include contract: only `"fx"` is
+valid, non-empty include is valid only with `scope:"tracks"`, and
+`get_state(render, include:["fx"])` returns `PARAMS_INVALID` before
+the reserved-scope `SCOPE_NOT_IMPLEMENTED` path. Code/test baseline:
+`npm test` 225/225 green, `npm run build` clean, `git diff --check`
+clean. Focused reviewer found one P2 (direct-queue `include:{}` was
+accepted as empty array); fixed by requiring the JSON decoder's
+`__streetlight_array` marker in Lua `is_array_like()`. Live REAPER
+smoke S0-S10 passed on REAPER 7.71/macOS-arm64 after a full
+quit/reopen to clear a stale pre-Slice-02 bridge owner. S10 baseline:
+80 ReaEQs on one track fits (`response_bytes=12650`); 650 ReaEQs
+with `limit=1` returns `RESPONSE_TOO_LARGE`.
+
+**Kernel hardening Slice 01 ✅ live-smoked, committed, and pushed
+(2026-06-29, `baa13bd`).** Architect packet lives at
+`docs/plans/SLICE_01_ARCHITECT_PLAN.md`. Slice 01 implements H1's
 data-driven entity routing plus H3's readonly `get_state(project)`,
 `get_state(tracks)`, and `get_state(regions)` scopes. Code/test
 baseline: `npm test` 216/216 green, `npm run build` clean. Focused
@@ -28,12 +49,6 @@ inserted `/System/Library/Sounds/Ping.aiff` and produced
 all returned ok; `item_fade` via `last_result:item:0` returned the
 same imported item GUID, proving readonly scopes did not touch
 `LAST_RESULT`; `get_state(render)` returned `SCOPE_NOT_IMPLEMENTED`.
-`docs/RESPONSE_BUDGET.md` is synchronized with the new locked
-`project` / `tracks` / `regions` shapes. Reviewer pass closed three
-pre-smoke issues: H1 now has a fake-entity routing test via
-`reaper/packs/core/lib/entity_buckets.lua`, HANDOFF smoke order now
-proves I7 as mutation → reads → `last_result:item:0`, and
-`docs/RESPONSE_BUDGET.md` is included in the Slice 01 doc surface.
 
 **Step 7 ✅ verified live (2026-06-29).** `list_templates` +
 `list_recipes` MCP tools shipped, `recipes/impact_variations.yaml`
@@ -232,6 +247,88 @@ take-resolve-before-write ordering fix landed live. See "Step 5
 mid-smoke fix (2026-06-29)" and "Step 5 verification (2026-06-29)"
 below.
 
+### Kernel hardening Slice 02 (2026-06-29) — track FX read projection ✅
+
+Scope: implement `get_state(tracks, include:["fx"])` from
+`docs/plans/SLICE_02_ARCHITECT_PLAN.md`. This is a readonly H3
+projection only: no new write templates, no FX params, no item/take FX,
+no `fields`, no `cursor`, no `get_state(render)`.
+
+What changed:
+
+- `packages/core/src/types.ts` — `TrackDescriptor` gains optional
+  `fx?: FxDescriptor[]`; new `FxDescriptor` locks
+  `{index,name,ident,enabled,preset_name}`. `fx` is absent by default
+  and present only on `include:["fx"]`.
+- `packages/mcp-server/src/tools/get-state.ts` — `include` schema
+  added as strict `z.array(z.enum(["fx"]))`; `superRefine` rejects
+  non-empty include outside `scope:"tracks"` with `PARAMS_INVALID`
+  before touching the queue.
+- `packages/mcp-server/src/index.ts` — MCP tool schema exposes
+  `include` and forwards it; startup log moved from stale "step 7" to
+  neutral `v0.1 kernel`.
+- `reaper/streetlight_bridge.lua` — direct-queue callers get the same
+  include contract in Lua. Unknown include values and include on
+  non-tracks scopes return `PARAMS_INVALID`; this runs before the
+  `render` reserved-scope branch, so
+  `get_state(render, include:["fx"])` is `PARAMS_INVALID`, not
+  `SCOPE_NOT_IMPLEMENTED`. Track FX metadata uses
+  `TrackFX_GetCount`, `TrackFX_GetFXName`, `TrackFX_GetNamedConfigParm(...,
+  "fx_ident")`, `TrackFX_GetEnabled`, and `TrackFX_GetPreset`. There is
+  no `TrackFX_GetFXIdent`. API absence/call failure degrades fields to
+  `""`/`false` rather than killing the read.
+- `packages/mcp-server/src/tools/__tests__/get-state.test.ts` — +8
+  fake-bridge tests for default/no include, empty include, FX descriptor
+  parsing, unknown include rejection, non-tracks include rejection
+  including render priority, and truncated tracks-with-FX parsing.
+- `scripts/__tests__/lua-structure.test.mjs` — +1 structure guard that
+  locks the Lua include validator and `fx_ident` API choice.
+- `docs/RESPONSE_BUDGET.md` — optional track `fx` shape, include
+  error-priority contract, and FX-heavy single-track
+  `RESPONSE_TOO_LARGE` risk.
+- `docs/ROADMAP.md` — v0.2 wording updated: Slice 02 ships only
+  track-level FX include; fields/cursor/render/take FX/item FX/FX
+  params/FX writes remain deferred.
+- `docs/plans/SLICE_02_ARCHITECT_PLAN.md` — packet parked for future
+  windows.
+
+Verification so far:
+
+- `npm test` → 225/225 green.
+- `npm run build` → clean.
+- `git diff --check` → clean.
+- Focused reviewer pass complete. One P2 (`include:{}` direct-queue
+  bypass) fixed in Lua `is_array_like()` + structure guard.
+- Live REAPER smoke S0-S10 passed on REAPER 7.71/macOS-arm64. The
+  first attempt hit the expected dirty-bridge-owner issue: a stale
+  pre-Slice-02 bridge loop was still claiming queue files and ignored
+  `include`. After fully quitting/reopening REAPER and loading the
+  current `start_bridge.lua`, the clean run passed.
+
+Smoke evidence:
+
+- S0 `ping` → connected, REAPER 7.71/macOS-arm64.
+- S1 `get_state(project)` → ok.
+- S2 `get_state(tracks)` → ok, no `fx` field by default.
+- S3 ReaEQ projection → `fx[0].index=0`, name `VST: ReaEQ (Cockos)`,
+  non-empty `ident`, `enabled=true`, `preset_name=""`.
+- S4 `include:["fx","midi"]` → `PARAMS_INVALID`.
+- P2 regression probe direct queue `include:{}` → `PARAMS_INVALID`,
+  message "get_state include must be an array".
+- S5 `regions + include:["fx"]` → `PARAMS_INVALID`.
+- S6 `render + include:["fx"]` → `PARAMS_INVALID`, not
+  `SCOPE_NOT_IMPLEMENTED`.
+- S7 read FX then `track_rename track_id:"last_result:track:0"` →
+  passed, proving reads did not touch `LAST_RESULT`.
+- S8 bare `get_state(render)` → `SCOPE_NOT_IMPLEMENTED`.
+- S9 ReaEQ preset selected → `preset_name="stock - Basic 11 band"`.
+- S10 FX-heavy baseline: 80 ReaEQs on one track returned `total=1`,
+  `returned=1`, `truncated=false`, `response_bytes=12650`,
+  `fx_count=80`; 650 ReaEQs on the first track with `limit=1`
+  returned `RESPONSE_TOO_LARGE` with message "Single track descriptor
+  exceeds the 65536 byte response cap". Temporary tracks, scratch
+  queue files, and `/tmp/streetlight_slice02*` files were cleaned up.
+
 
 
 ### v0.1 progress at a glance
@@ -239,9 +336,9 @@ below.
 | | Done | Remaining |
 |---|---|---|
 | Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅ | none (v0.1 release-polish complete; release-prep setup/launcher landed; second-Mac smoke is the open gate) |
-| Tests | 216/216 green | grows per step |
+| Tests | 225/225 green | Slice 02 commit pending |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 01 is now
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 02 is now
 commit-ready.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
@@ -276,15 +373,19 @@ window with the manual REAPER `Actions → ReaScript: Load... → Run`
 gate passed live on this Mac (console: `bridge ready (generation
 1) — templates: …`). Test bar 171 → 198 (+27 pure-function setup
 tests). The second-Mac smoke per `docs/CROSS_MAC_SMOKE.md` is the
-remaining gate before any release tag.
+remaining gate before any release tag. Kernel Slice 01 was committed
+and pushed at `baa13bd`; Slice 02 is an uncommitted, reviewer-checked,
+live-smoked code-drop adding track-level FX read projection behind
+`get_state(tracks, include:["fx"])`.
 
 ### Next action
 
-1. **Commit Slice 01 when the user asks.** Focused reviewer re-review
-   passed, `npm test` is 216/216 green, `npm run build` is clean, and
-   the live REAPER smoke above is green.
+1. **Commit Kernel Slice 02 when the user asks.** Focused reviewer
+   pass is complete, live REAPER S0-S10 is green, `npm test` is
+   225/225 green, `npm run build` is clean, and `git diff --check` is
+   clean.
 2. **Second-Mac smoke / v0.1 release tag remains available after
-   Slice 01 commit.** Setup/launcher reproducer is ready;
+   Slice 02 closes.** Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 
 
@@ -2943,10 +3044,11 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 01 is commit-ready.** Read
-   `docs/plans/SLICE_01_ARCHITECT_PLAN.md` before touching code. The
-   code-drop currently has 216/216 tests + clean build and the live
-   REAPER smoke green. Do not commit unless the user explicitly asks.
+2. **Kernel hardening Slice 02 is commit-ready.** Read
+   `docs/plans/SLICE_02_ARCHITECT_PLAN.md` before touching code. The
+   code-drop currently has 225/225 tests + clean build + clean
+   `git diff --check`; focused reviewer pass and live REAPER S0-S10
+   smoke are green. Do not commit unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

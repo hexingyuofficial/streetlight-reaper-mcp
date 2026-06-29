@@ -35,6 +35,23 @@ export interface TrackDescriptor {
   mute: boolean;
   solo: boolean;
   recarm: boolean;
+  /**
+   * Present only when `get_state({ scope: "tracks", include: ["fx"] })`
+   * is requested. Omitted by default to preserve the response budget.
+   */
+  fx?: FxDescriptor[];
+}
+
+export interface FxDescriptor {
+  /** Zero-based FX slot index within the track. Not a stable ref. */
+  index: number;
+  /** FX display name. `""` if REAPER cannot provide one. */
+  name: string;
+  /** REAPER fx_ident named-config value. `""` if unavailable. */
+  ident: string;
+  enabled: boolean;
+  /** Active preset name/path. `""` when no preset name is reported. */
+  preset_name: string;
 }
 
 export interface RegionDescriptor {

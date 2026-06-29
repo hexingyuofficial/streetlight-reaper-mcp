@@ -365,14 +365,187 @@ describe("getState", () => {
     }
   });
 
-  it("does not publish Slice 02 include params on the wire", async () => {
+  it("omits include when the caller does not request FX metadata", async () => {
     const bridge = startFakeBridge(queueDir, () => ({
       ok: true,
       result: fakeList("tracks", []),
     }));
     try {
-      await getState(client, { scope: "tracks", include: ["fx"] } as never);
+      await getState(client, { scope: "tracks" });
       expect(bridge.seen[0]!.params).toEqual({ scope: "tracks", limit: 50 });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("forwards include: [] on the wire without adding FX fields", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("tracks", [
+        {
+          id: "guid:{TRACK-A}",
+          name: "No FX",
+          index: 0,
+          depth: 0,
+          volume: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          recarm: false,
+        },
+      ]),
+    }));
+    try {
+      const result = await getState(client, { scope: "tracks", include: [] });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.tracks.items[0]).not.toHaveProperty("fx");
+      }
+      expect(bridge.seen[0]!.params).toEqual({
+        scope: "tracks",
+        limit: 50,
+        include: [],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("forwards include: ['fx'] and parses FX descriptors", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("tracks", [
+        {
+          id: "guid:{TRACK-A}",
+          name: "FX Track",
+          index: 0,
+          depth: 0,
+          volume: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          recarm: false,
+          fx: [
+            {
+              index: 0,
+              name: "VST: ReaEQ (Cockos)",
+              ident: "VST: ReaEQ (Cockos)<1920167789>",
+              enabled: true,
+              preset_name: "",
+            },
+          ],
+        },
+        {
+          id: "guid:{TRACK-B}",
+          name: "Empty FX Track",
+          index: 1,
+          depth: 0,
+          volume: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          recarm: false,
+          fx: [],
+        },
+      ], { response_bytes: 340 }),
+    }));
+    try {
+      const result = await getState(client, { scope: "tracks", include: ["fx"] });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const tracks = result.result.tracks;
+        expect(tracks.items[0]!.fx).toEqual([
+          {
+            index: 0,
+            name: "VST: ReaEQ (Cockos)",
+            ident: "VST: ReaEQ (Cockos)<1920167789>",
+            enabled: true,
+            preset_name: "",
+          },
+        ]);
+        expect(tracks.items[1]!.fx).toEqual([]);
+      }
+      expect(bridge.seen[0]!.params).toEqual({
+        scope: "tracks",
+        limit: 50,
+        include: ["fx"],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("returns PARAMS_INVALID for unknown include values without hitting the bridge", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("tracks", []),
+    }));
+    const result = await getState(
+      client,
+      { scope: "tracks", include: ["fx", "midi"] } as never,
+      100,
+    );
+    try {
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("PARAMS_INVALID");
+        expect(result.error.message).toMatch(/include/);
+        expect(result.error.message).toMatch(/Invalid enum value/);
+      }
+      expect(bridge.seen).toHaveLength(0);
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it.each(["selection", "project", "regions", "render"] as const)(
+    "returns PARAMS_INVALID for include on %s scope before hitting the bridge",
+    async (scope) => {
+      const bridge = startFakeBridge(queueDir, () => ({
+        ok: true,
+        result: fakeSelection([]),
+      }));
+      const result = await getState(client, { scope, include: ["fx"] }, 100);
+      try {
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe("PARAMS_INVALID");
+          expect(result.error.message).toMatch(/scope='tracks'/);
+        }
+        expect(bridge.seen).toHaveLength(0);
+      } finally {
+        await bridge.stop();
+      }
+    },
+  );
+
+  it("parses a truncated tracks-with-FX envelope from the bridge", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("tracks", [
+        {
+          id: "guid:{TRACK-A}",
+          name: "Returned",
+          index: 0,
+          depth: 0,
+          volume: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          recarm: false,
+          fx: [],
+        },
+      ], { total: 2, truncated: true, response_bytes: 120 }),
+    }));
+    try {
+      const result = await getState(client, { scope: "tracks", include: ["fx"] });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.tracks.items).toHaveLength(1);
+        expect(result.result.tracks.total).toBe(2);
+        expect(result.result.tracks.returned).toBe(1);
+        expect(result.result.tracks.truncated).toBe(true);
+      }
     } finally {
       await bridge.stop();
     }

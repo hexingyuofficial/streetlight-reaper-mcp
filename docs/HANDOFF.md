@@ -1,4 +1,4 @@
-# Handoff — 2026-06-29 (Kernel hardening Slice 01 ✅ live-smoked; ready to commit)
+# Handoff — 2026-06-29 (Kernel Slice 02 ✅ live-smoked; track FX read projection commit-ready)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -6,16 +6,67 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
 - Path: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`, git repo on
   branch `main`. Recent checkpoints: `73864f7` beginner installers,
-  `7a1e4df` agent workflow + kernel hardening plans. The current
-  working tree is **Kernel hardening Slice 01** (uncommitted). The
-  user manages versioning out-of-band — do NOT commit, branch, push,
-  or reset without an explicit ask. Read `git log` / `git status` if
-  you need history context; treat the working tree as theirs to commit.
-- `npm test` → **216/216 green** (207 baseline + 9 Slice 01 tests:
-  get_state project/tracks/regions + render reserved + Slice-02
-  schema omission + Lua entity-routing guards). `npm run build` → clean.
+  `7a1e4df` agent workflow + kernel hardening plans, `baa13bd`
+  **Kernel Slice 01** committed and pushed. The current working tree is
+  **Kernel hardening Slice 02** (uncommitted): `get_state(tracks,
+  include:["fx"])`. The user manages versioning out-of-band — do NOT
+  commit, branch, push, or reset without an explicit ask. Read `git
+  log` / `git status` if you need history context; treat the working
+  tree as theirs to commit.
+- `npm test` → **225/225 green** (216 baseline + 8 Slice 02
+  get_state include tests + 1 Lua structure guard). `npm run build` →
+  clean. `git diff --check` clean.
+- **Kernel hardening Slice 02 ✅ (2026-06-29; reviewer pass + live
+  smoke complete, uncommitted).** Scope from
+  `docs/plans/SLICE_02_ARCHITECT_PLAN.md`:
+  - TS/MCP: `get_state` now accepts optional `include`, strictly
+    `z.array(z.enum(["fx"]))`; non-empty include is valid only with
+    `scope:"tracks"` and returns `PARAMS_INVALID` before any queue
+    write otherwise. The MCP tool schema in `packages/mcp-server/src/index.ts`
+    exposes and forwards the field.
+  - Lua bridge: `DISPATCH.get_state` has the same include validation
+    for direct-queue callers. `get_state(render, include:["fx"])`
+    returns `PARAMS_INVALID`, not `SCOPE_NOT_IMPLEMENTED`; bare
+    `get_state(render)` remains `SCOPE_NOT_IMPLEMENTED`.
+  - Track descriptors still omit `fx` by default. With
+    `include:["fx"]`, each track gets `fx: []` or an array of
+    `{index,name,ident,enabled,preset_name}`. `ident` uses
+    `TrackFX_GetNamedConfigParm(track, fx, "fx_ident")`; there is no
+    `TrackFX_GetFXIdent`.
+  - Response budget remains item-boundary: the whole track descriptor,
+    including its FX chain, is encoded before the fit decision. No
+    truncating inside an FX array.
+  - Docs synced: `docs/RESPONSE_BUDGET.md`,
+    `docs/ROADMAP.md`, `docs/PROGRESS.md`, and this handoff; the
+    architect packet is parked at
+    `docs/plans/SLICE_02_ARCHITECT_PLAN.md`.
+  - Focused reviewer found one P2: direct-queue `include:{}` was
+    accepted as an empty array. Fixed by requiring the JSON decoder's
+    `__streetlight_array` marker in Lua `is_array_like()` while still
+    rejecting spoofed extra keys.
+  - Live smoke proof (REAPER 7.71/macOS-arm64): first attempt hit the
+    expected dirty-bridge-owner issue (stale pre-Slice-02 bridge loop
+    claimed queue files and ignored `include`). After a full REAPER
+    quit/reopen and loading the current `start_bridge.lua`, S0-S9 all
+    passed: `ping`, `project`, default `tracks` with no `fx` field,
+    ReaEQ FX projection (`index=0`, name `VST: ReaEQ (Cockos)`,
+    non-empty `ident`, `enabled=true`, `preset_name=""`), include
+    whitelist rejection (`["fx","midi"]`), P2 regression probe
+    `include:{}` → `PARAMS_INVALID` / "get_state include must be an
+    array", regions+include rejection, render+include
+    `PARAMS_INVALID` before `SCOPE_NOT_IMPLEMENTED`, I7 read-FX then
+    `track_rename last_result:track:0`, bare `get_state(render)` →
+    `SCOPE_NOT_IMPLEMENTED`, and preset readback
+    `preset_name="stock - Basic 11 band"`.
+  - S10 FX-heavy baseline: 80 ReaEQs on one track returned
+    `total=1`, `returned=1`, `truncated=false`,
+    `response_bytes=12650`, `fx_count=80`; 650 ReaEQs on the first
+    track with `limit=1` returned `RESPONSE_TOO_LARGE` with message
+    "Single track descriptor exceeds the 65536 byte response cap".
+    Temporary tracks, scratch queue files, and `/tmp/streetlight_slice02*`
+    were cleaned up.
 - **Kernel hardening Slice 01 ✅ (2026-06-29, focused re-review +
-  live smoke passed; uncommitted).** Scope from
+  live smoke passed; committed + pushed at `baa13bd`).** Scope from
   `docs/plans/SLICE_01_ARCHITECT_PLAN.md`:
   - H1: `reaper/packs/core/manifest.lua` now exposes
     `entity_buckets`; `reaper/packs/core/lib/entity_buckets.lua`
@@ -248,20 +299,20 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit Slice 01."** Slice 01 has focused re-review + live
-       smoke green. Current baseline is `npm test` 216/216 +
-       `npm run build` clean; smoke evidence is above and in
-       `docs/PROGRESS.md`. Review `git diff`, then commit if the user
-       explicitly asks.
+   (a) **"Commit Slice 02."** Slice 02 has focused reviewer pass +
+       live REAPER smoke green. Current baseline is `npm test`
+       225/225 + `npm run build` clean + `git diff --check` clean.
+       Review `git diff`, then commit only if the user explicitly
+       asks.
 
-   (b) **"Re-run Slice 01 smoke."** Only needed if new code changes
-       land. Fully quit/reopen REAPER first, then repeat the proven
-       I7 order: item mutation → `get_state(project)` →
-       `get_state(tracks)` → `get_state(regions)` →
-       `last_result:item:0` harmless item template →
-       `get_state(render)` = `SCOPE_NOT_IMPLEMENTED`.
+   (b) **"Re-run Slice 02 smoke."** Fully quit/reopen REAPER for a
+       clean bridge owner, run the launcher, confirm `bridge ready
+       (generation 1)`, then repeat
+       `docs/plans/SLICE_02_ARCHITECT_PLAN.md` § Acceptance Smoke
+       S0-S10. The dirty-bridge-owner failure mode is known: stale
+       pre-Slice-02 bridge loops ignore `include`.
 
-   (c) **"Codex found a bug in Slice 01 or earlier."** Locked
+   (c) **"Codex found a bug in Slice 02 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -270,7 +321,7 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (d) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 216/216,
+2. **Tests + build baseline this window:** `npm test` 225/225,
    `npm run build` clean. The `npm run typecheck` script prints a
    `TS6310` "may not disable emit" line then exits 0 — pre-existing
    project setup, do not chase. The `[streetlight-mcp] done-sweep:

@@ -7,6 +7,7 @@ import { FileQueueClient, resolveQueueDir } from "./transport/file-queue.js";
 import { ping } from "./tools/ping.js";
 import {
   getState,
+  GetStateInclude,
   GetStateScope,
   DEFAULT_GET_STATE_LIMIT,
   MAX_GET_STATE_LIMIT,
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
   registerCoreTemplates(registry);
 
   process.stderr.write(
-    `[streetlight-mcp] queue=${queueDir}\n[streetlight-mcp] step 7 — ping + get_state + list_templates + list_recipes + call_template (${registry.size()} templates)\n`,
+    `[streetlight-mcp] queue=${queueDir}\n[streetlight-mcp] v0.1 kernel — ping + get_state + list_templates + list_recipes + call_template (${registry.size()} templates)\n`,
   );
 
   const server = new McpServer({
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
 
   server.tool(
     "get_state",
-    'Read a scoped subset of the REAPER project. Implemented scopes: "selection", "project", "tracks", "regions"; "render" is reserved and returns SCOPE_NOT_IMPLEMENTED. `limit` (default 50, max 200) bounds list responses; the bridge also enforces an item-boundary byte cap and returns RESPONSE_TOO_LARGE if a single descriptor exceeds it. See docs/RESPONSE_BUDGET.md.',
+    'Read a scoped subset of the REAPER project. Implemented scopes: "selection", "project", "tracks", "regions"; "render" is reserved and returns SCOPE_NOT_IMPLEMENTED. `include:["fx"]` is valid only with scope="tracks" and adds track FX metadata. `limit` (default 50, max 200) bounds list responses; the bridge also enforces an item-boundary byte cap and returns RESPONSE_TOO_LARGE if a single descriptor exceeds it. See docs/RESPONSE_BUDGET.md.',
     {
       scope: GetStateScope.optional(),
       limit: z
@@ -64,11 +65,13 @@ async function main(): Promise<void> {
         .min(MIN_GET_STATE_LIMIT)
         .max(MAX_GET_STATE_LIMIT)
         .optional(),
+      include: z.array(GetStateInclude).optional(),
     },
-    async ({ scope, limit }) => {
+    async ({ scope, limit, include }) => {
       const result = await getState(client, {
         scope: scope ?? "selection",
         limit: limit ?? DEFAULT_GET_STATE_LIMIT,
+        include,
       });
       return {
         content: [

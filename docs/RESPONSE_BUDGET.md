@@ -29,7 +29,7 @@ So: response budget. It's accurate and it names what the code does.
 | Surface | Worst case | When implemented |
 |---|---|---|
 | `get_state scope=selection` | user selects every item in a 500-item project | v0.1 |
-| `get_state scope=tracks` | 200 tracks × descriptors now; FX chains later | Kernel hardening Slice 01 (FX deferred) |
+| `get_state scope=tracks` | 200 tracks × optional FX chains | Kernel hardening Slice 01 + Slice 02 (`include:["fx"]`) |
 | `get_state scope=regions` | hundreds of timeline regions | Kernel hardening Slice 01 |
 | `get_state scope=project` | project summary now; full snapshot later | Kernel hardening Slice 01 (summary only) |
 | `list_templates` | 50 templates × full JSON Schema (~3 KB each) ≈ 150 KB | Step 3 |
@@ -116,11 +116,14 @@ Input:
 ```json
 {
   "scope": "selection",
-  "limit": 50
+  "limit": 50,
+  "include": ["fx"]
 }
 ```
 
-Defaults: `limit = 50`, clamped to `[1, 200]`. Bridge has the same fallback.
+Defaults: `scope = "selection"`, `limit = 50`, clamped to `[1, 200]`.
+Bridge has the same fallback. `include` is optional; Slice 02 allows only
+`["fx"]`, and only with `scope = "tracks"`.
 
 Output:
 
@@ -167,7 +170,54 @@ changes to the scope name.
 ```
 
 `index` is an order/display hint, not a stable reference. Use `id` when you need
-to address the track later. FX chains are deliberately not included in Slice 01.
+to address the track later.
+
+Slice 02 adds an opt-in FX projection:
+
+```json
+{
+  "id": "guid:{...}",
+  "index": 0,
+  "name": "Impacts",
+  "depth": 0,
+  "volume": 1,
+  "pan": 0,
+  "mute": false,
+  "solo": false,
+  "recarm": false,
+  "fx": [
+    {
+      "index": 0,
+      "name": "VST: ReaEQ (Cockos)",
+      "ident": "VST: ReaEQ (Cockos)<1920167789>",
+      "enabled": true,
+      "preset_name": ""
+    }
+  ]
+}
+```
+
+`fx` is present only when the caller sends
+`get_state({ scope: "tracks", include: ["fx"] })`. It is deliberately
+omitted by default, not returned as `[]` or `null`, because FX chains are the
+expensive sub-resource. When included, tracks with no FX return `fx: []`.
+
+`FxDescriptor.index` is a zero-based FX slot index within the track, not a
+stable reference. `ident` is REAPER's `fx_ident` named-config value when
+available. `name`, `ident`, and `preset_name` use `""` when REAPER cannot
+provide a value; never `null`, never omitted.
+
+The `fx` array is part of the track descriptor for response-budget purposes:
+the bridge JSON-encodes the whole track descriptor, including `fx`, before
+deciding whether it fits. It never truncates inside an FX chain.
+
+Include errors are part of the public contract:
+
+- unknown include values such as `"midi"` return `PARAMS_INVALID`;
+- non-`tracks` scopes with a non-empty include return `PARAMS_INVALID`;
+- `get_state(render, include:["fx"])` returns `PARAMS_INVALID`, not
+  `SCOPE_NOT_IMPLEMENTED`, because include validation runs before scope
+  dispatch.
 
 `regions.items[]` v1 descriptor:
 
@@ -202,7 +252,7 @@ unstable across deletes and is not exposed as an id.
 ```
 
 `render` remains a reserved scope that returns `SCOPE_NOT_IMPLEMENTED` in
-Slice 01.
+Slice 01 and Slice 02 when no invalid include is supplied.
 
 Truncation is collapsed into one boolean: `truncated = true` when **either**
 `returned < total` (limit hit) or the byte cap was reached. The caller can tell
@@ -304,8 +354,8 @@ These are mentioned in `docs/ROADMAP.md`. They build on the v0.1 backstop
 shapes without breaking them.
 
 - **`fields: string[]` projection** on `get_state` and `list_templates`
-- **`include: string[]`** for opt-in expensive sub-resources (FX chains,
-  automation envelopes, take FX)
+- **`include: string[]`** beyond Slice 02's `["fx"]` on `tracks`:
+  automation envelopes, take FX, item FX, and other expensive sub-resources
 - **`cursor: string`** for true pagination on long lists (when stability
   semantics can be honestly described)
 - **`summary_only: true` mode** on `list_templates` / `list_recipes` (the
@@ -328,8 +378,13 @@ Things v0.1 does NOT defend against, listed so we don't get surprised:
   to REAPER's console, not over MCP. Still worth bounding eventually.
 - **New `get_state` scopes shipping without re-reading this doc first.**
   Every new scope re-enters this design space. `selection` / `tracks` /
-  `regions` / `project` are the Slice 01 baseline; `render`, FX-rich track
-  details, pagination, and projection still need fresh review.
+  `regions` / `project` are the Slice 01 baseline; Slice 02 adds
+  track-level FX chains behind `include:["fx"]`. `render`, take FX, item FX,
+  FX parameters, pagination, and projection still need fresh review.
+- **A single FX-heavy track can exceed the response cap.** Slice 02 treats an
+  FX chain as part of the track descriptor and refuses to split it. If the
+  first requested track cannot fit, the bridge returns `RESPONSE_TOO_LARGE`
+  rather than emitting malformed or partial FX JSON.
 
 ## Process Note
 

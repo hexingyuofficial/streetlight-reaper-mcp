@@ -230,6 +230,57 @@ local function build_track_descriptor(track, index, depth)
   }
 end
 
+local function safe_reaper_string(fn, ...)
+  if type(fn) ~= "function" then return "" end
+
+  local ok, retval, value = pcall(fn, ...)
+  if not ok or retval == false then return "" end
+  if type(value) ~= "string" then return "" end
+  return value
+end
+
+local function safe_track_fx_enabled(track, fx_index)
+  if type(reaper.TrackFX_GetEnabled) ~= "function" then return false end
+
+  local ok, enabled = pcall(reaper.TrackFX_GetEnabled, track, fx_index)
+  return ok and enabled == true
+end
+
+local function safe_track_fx_count(track)
+  if type(reaper.TrackFX_GetCount) ~= "function" then return 0 end
+
+  local ok, count = pcall(reaper.TrackFX_GetCount, track)
+  if not ok or type(count) ~= "number" or count < 0 then return 0 end
+  return math.floor(count)
+end
+
+local function build_fx_descriptor(track, fx_index)
+  return {
+    index       = fx_index,
+    name        = safe_reaper_string(reaper.TrackFX_GetFXName, track, fx_index, ""),
+    ident       = safe_reaper_string(reaper.TrackFX_GetNamedConfigParm, track, fx_index, "fx_ident"),
+    enabled     = safe_track_fx_enabled(track, fx_index),
+    preset_name = safe_reaper_string(reaper.TrackFX_GetPreset, track, fx_index, ""),
+  }
+end
+
+local function build_fx_descriptors(track)
+  local count = safe_track_fx_count(track)
+
+  local fx = {}
+  for i = 0, count - 1 do
+    fx[#fx + 1] = build_fx_descriptor(track, i)
+  end
+  return json.array(fx)
+end
+
+local function maybe_add_track_fx(desc, track, include_fx)
+  if include_fx then
+    desc.fx = build_fx_descriptors(track)
+  end
+  return desc
+end
+
 local function append_descriptor_with_budget(items, bytes, desc)
   local encoded    = json.encode(desc)
   local item_bytes = #encoded
@@ -325,7 +376,7 @@ local function read_selection(limit_raw)
   }
 end
 
-local function read_tracks(limit_raw)
+local function read_tracks(limit_raw, include_fx)
   local limit      = clamp_limit(limit_raw)
   local total      = reaper.CountTracks(0)
   local effective  = math.min(total, limit)
@@ -337,7 +388,7 @@ local function read_tracks(limit_raw)
   for i = 0, total - 1 do
     local track = reaper.GetTrack(0, i)
     if track and i < effective and not truncated then
-      local desc = build_track_descriptor(track, i, depth)
+      local desc = maybe_add_track_fx(build_track_descriptor(track, i, depth), track, include_fx)
       local ok_append, new_bytes = append_descriptor_with_budget(items, bytes, desc)
       if not ok_append then
         if #items == 0 then
@@ -426,20 +477,69 @@ local function read_regions(limit_raw)
   }
 end
 
+local function params_invalid(message)
+  return {
+    ok = false,
+    error = {
+      code        = "PARAMS_INVALID",
+      message     = message,
+      recoverable = true,
+    },
+  }
+end
+
+local function is_array_like(t)
+  if type(t) ~= "table" then return false end
+  if rawget(t, "__streetlight_array") ~= true then return false end
+
+  local count = 0
+  for k, _ in pairs(t) do
+    if k == "__streetlight_array" then
+      goto continue
+    end
+    if type(k) ~= "number" or k ~= math.floor(k) or k < 1 then
+      return false
+    end
+    count = count + 1
+    ::continue::
+  end
+  return count == #t
+end
+
+local function validate_get_state_include(params, scope)
+  local include = params.include
+  if include == nil then return nil, false end
+
+  if not is_array_like(include) then
+    return params_invalid("get_state include must be an array"), false
+  end
+
+  local include_fx = false
+  for i = 1, #include do
+    local value = include[i]
+    if value ~= "fx" then
+      return params_invalid("Unknown get_state include value: " .. tostring(value)), false
+    end
+    include_fx = true
+  end
+
+  if include_fx and scope ~= "tracks" then
+    return params_invalid("include is only valid with scope='tracks'"), false
+  end
+
+  return nil, include_fx
+end
+
 function DISPATCH.get_state(cmd)
   local params = cmd.params or {}
   local scope = params.scope
   if scope == nil or scope == "" then scope = "selection" end
 
+  local include_error, include_fx = validate_get_state_include(params, scope)
+  if include_error then return include_error end
+
   if not KNOWN_SCOPES[scope] then
-    return {
-      ok = false,
-      error = {
-        code        = "PARAMS_INVALID",
-        message     = "Unknown get_state scope: " .. tostring(scope),
-        recoverable = true,
-      },
-    }
+    return params_invalid("Unknown get_state scope: " .. tostring(scope))
   end
 
   if scope == "render" then
@@ -466,7 +566,7 @@ function DISPATCH.get_state(cmd)
   if scope == "selection" then
     list = read_selection(params.limit)
   elseif scope == "tracks" then
-    list = read_tracks(params.limit)
+    list = read_tracks(params.limit, include_fx)
   elseif scope == "regions" then
     list = read_regions(params.limit)
   end
