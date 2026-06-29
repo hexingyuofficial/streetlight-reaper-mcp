@@ -90,7 +90,17 @@ describe("callTemplate", () => {
       expect(cmd.kind).toBe("template");
       expect(cmd.name).toBe("item_pitch");
       expect(cmd.params).toEqual({ item_id: "selected:0", semitones: 2 });
-      expect(cmd.expected_delta).toEqual({ count: 1 });
+      expect(cmd.expected_delta).toEqual({
+        count: 1,
+        fields: [
+          {
+            scope: "take",
+            field: "D_PITCH",
+            param_path: "semitones",
+            tolerance: 1e-6,
+          },
+        ],
+      });
     } finally {
       await bridge.stop();
     }
@@ -98,15 +108,47 @@ describe("callTemplate", () => {
 
   it("on-wire: every undoable mutating core template sends expected_delta; render_region omits it", async () => {
     const expectedByTemplate = new Map<string, unknown>([
-      ["item_pitch", { count: 1 }],
-      ["item_move", { count: 1 }],
-      ["item_rate", { count: 1 }],
+      [
+        "item_pitch",
+        {
+          count: 1,
+          fields: [
+            { scope: "take", field: "D_PITCH", param_path: "semitones", tolerance: 1e-6 },
+          ],
+        },
+      ],
+      [
+        "item_move",
+        {
+          count: 1,
+          fields: [
+            { scope: "item", field: "D_POSITION", param_path: "position", tolerance: 1e-6 },
+          ],
+        },
+      ],
+      [
+        "item_rate",
+        {
+          count: 1,
+          fields: [
+            { scope: "take", field: "D_PLAYRATE", param_path: "rate", tolerance: 1e-6 },
+          ],
+        },
+      ],
       ["item_trim", { count: 1 }],
       ["item_fade", { count: 1 }],
       ["item_duplicate", { count: 1, creates: true }],
       ["media_import", { count: "any", creates: true }],
       ["track_create", { count: 1, maybeCreates: true }],
-      ["track_rename", { count: 1 }],
+      [
+        "track_rename",
+        {
+          count: 1,
+          fields: [
+            { scope: "track", field: "P_NAME", param_path: "name" },
+          ],
+        },
+      ],
       ["region_create", { count: 1, creates: true }],
     ]);
     const validParamsByTemplate: Record<string, unknown> = {

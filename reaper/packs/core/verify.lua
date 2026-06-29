@@ -1,7 +1,7 @@
 -- verify.lua — structural before/after checks for mutating templates.
 --
--- Slice 04 intentionally verifies only entity-count deltas. Field-level
--- checks (e.g. "D_PITCH equals params.semitones") are deferred to Slice 05.
+-- Slice 04 verified entity-count deltas. Slice 06 adds a deliberately small
+-- field-level readback for four in-place templates.
 
 local M = {}
 
@@ -90,6 +90,138 @@ function M.check(expected, changed_ids, delta, entity_kind, changed_count_overri
   end
 
   return nil
+end
+
+local function parse_guid_ref(ref)
+  if type(ref) ~= "string" then return nil end
+  return ref:match("^guid:(%b{})$")
+end
+
+local function find_item_by_guid(guid)
+  local count = reaper.CountMediaItems(0)
+  for i = 0, count - 1 do
+    local item = reaper.GetMediaItem(0, i)
+    local _, this_guid = reaper.GetSetMediaItemInfo_String(item, "GUID", "", false)
+    if this_guid == guid then return item end
+  end
+  return nil
+end
+
+local function find_track_by_guid(guid)
+  local count = reaper.CountTracks(0)
+  for i = 0, count - 1 do
+    local track = reaper.GetTrack(0, i)
+    local _, this_guid = reaper.GetSetMediaTrackInfo_String(track, "GUID", "", false)
+    if this_guid == guid then return track end
+  end
+  return nil
+end
+
+local function read_item_field(handle, field)
+  return true, reaper.GetMediaItemInfo_Value(handle, field)
+end
+
+local function read_take_field(handle, field)
+  local take = reaper.GetActiveTake(handle)
+  if not take then return false, nil, "active take not found" end
+  return true, reaper.GetMediaItemTakeInfo_Value(take, field)
+end
+
+local function read_track_field(handle, field)
+  if field == "P_NAME" then
+    local ok, value = reaper.GetSetMediaTrackInfo_String(handle, field, "", false)
+    if ok == false then return false, nil, "track string field not found" end
+    return true, value
+  end
+  return true, reaper.GetMediaTrackInfo_Value(handle, field)
+end
+
+local FIELD_READERS = {
+  item  = { entity_kind = "item",  resolve = find_item_by_guid,  read = read_item_field },
+  take  = { entity_kind = "item",  resolve = find_item_by_guid,  read = read_take_field },
+  track = { entity_kind = "track", resolve = find_track_by_guid, read = read_track_field },
+}
+
+local function param_path(field)
+  return field.param_path or field.paramPath
+end
+
+local function values_match(expected, actual, tolerance)
+  if type(expected) == "number" and type(actual) == "number" and type(tolerance) == "number" then
+    return math.abs(expected - actual) <= tolerance
+  end
+  return expected == actual
+end
+
+local function mismatch(field, expected, actual, tolerance)
+  return {
+    scope     = field.scope,
+    field     = field.field,
+    expected  = expected,
+    actual    = actual,
+    tolerance = tolerance,
+    ok        = false,
+  }
+end
+
+function M.check_fields(expected, changed_ids, params, entity_kind)
+  if type(expected) ~= "table" or type(expected.fields) ~= "table" then
+    return nil
+  end
+  if type(changed_ids) ~= "table" or type(changed_ids[1]) ~= "string" then
+    return nil
+  end
+
+  local failures = {}
+  local guid = parse_guid_ref(changed_ids[1])
+  if not guid then
+    failures[#failures + 1] = {
+      scope = "unknown",
+      field = "changed_ids[1]",
+      expected = "guid:{...}",
+      actual = tostring(changed_ids[1]),
+      ok = false,
+    }
+    return "changed_ids[1] is not a guid ref", failures
+  end
+
+  for i = 1, #expected.fields do
+    local field = expected.fields[i]
+    local reader = type(field) == "table" and FIELD_READERS[field.scope] or nil
+    if not reader then
+      failures[#failures + 1] = mismatch(
+        { scope = tostring(field and field.scope), field = tostring(field and field.field) },
+        "supported scope",
+        tostring(field and field.scope),
+        nil
+      )
+    elseif reader.entity_kind ~= entity_kind then
+      failures[#failures + 1] = mismatch(field, reader.entity_kind, entity_kind, nil)
+    else
+      local handle = reader.resolve(guid)
+      if not handle then
+        failures[#failures + 1] = mismatch(field, "existing " .. entity_kind, "not found", nil)
+      else
+        local key = param_path(field)
+        local expected_value = type(params) == "table" and params[key] or nil
+        local ok_read, actual_value, read_err = reader.read(handle, field.field)
+        local tolerance = field.tolerance
+        if not ok_read then
+          failures[#failures + 1] = mismatch(field, expected_value, read_err or "read failed", tolerance)
+        elseif not values_match(expected_value, actual_value, tolerance) then
+          failures[#failures + 1] = mismatch(field, expected_value, actual_value, tolerance)
+        end
+      end
+    end
+  end
+
+  if #failures == 0 then return nil end
+
+  local first = failures[1]
+  local reason = tostring(first.scope) .. "." .. tostring(first.field)
+    .. " expected " .. tostring(first.expected)
+    .. ", actual " .. tostring(first.actual)
+  return reason, failures
 end
 
 return M

@@ -955,6 +955,26 @@ function DISPATCH.template(cmd)
         },
       })
     end
+    local field_reason, field_details = verify.check_fields(
+      expected_delta,
+      changed_for_verify,
+      params,
+      entry.entity_kind
+    )
+    if field_reason then
+      return template_error_envelope({
+        code = ERRS.VERIFY_FAILED,
+        message = "Template '" .. name .. "' produced delta inconsistent with expectedDelta. "
+          .. field_reason .. ". The mutation has been applied — call get_state to inspect actual state.",
+        recoverable = false,
+        details = {
+          expected = expected_delta,
+          actual = delta,
+          changed_count = changed_total,
+          fields = json.array(field_details or {}),
+        },
+      })
+    end
   end
 
   return finalize_template(name, entry.entity_kind, raw_changed)

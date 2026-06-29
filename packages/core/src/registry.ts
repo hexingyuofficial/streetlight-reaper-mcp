@@ -12,11 +12,19 @@ export const UNDO_STATE = {
 
 export type UndoFlag = keyof typeof UNDO_STATE;
 
+export interface FieldCheckDescriptor {
+  field: string;
+  scope: "take" | "item" | "track";
+  paramPath: string;
+  tolerance?: number;
+}
+
 export interface ExpectedDelta {
   count: number | "any";
   creates?: boolean;
   maybeCreates?: boolean;
   deletes?: boolean;
+  fields?: ReadonlyArray<FieldCheckDescriptor>;
 }
 
 export interface CapabilityExample {
@@ -133,7 +141,14 @@ export class CapabilityRegistry {
       result_schema: zodToJsonSchema(c.result, `${c.name}.result`),
     };
     if (c.expectedDelta !== undefined) {
-      metadata.expectedDelta = { ...c.expectedDelta };
+      metadata.expectedDelta = {
+        ...c.expectedDelta,
+        ...(c.expectedDelta.fields !== undefined
+          ? {
+              fields: c.expectedDelta.fields.map((field) => ({ ...field })),
+            }
+          : {}),
+      };
     }
     if (c.reads !== undefined) metadata.reads = [...c.reads];
     if (c.writes !== undefined) metadata.writes = [...c.writes];
@@ -142,6 +157,11 @@ export class CapabilityRegistry {
 }
 
 const UNDO_FLAG_NAMES = new Set<string>(Object.keys(UNDO_STATE));
+const FIELD_CHECK_SCOPES = new Set<FieldCheckDescriptor["scope"]>([
+  "take",
+  "item",
+  "track",
+]);
 
 function validateDefinition(def: CapabilityDefinition): void {
   if (!def.entity_kind || typeof def.entity_kind !== "string") {
@@ -191,5 +211,70 @@ function validateDefinition(def: CapabilityDefinition): void {
         `Capability ${def.name} expectedDelta maybeCreates requires a numeric count`,
       );
     }
+    validateExpectedDeltaFields(def.name, def.expectedDelta);
+  }
+}
+
+function validateExpectedDeltaFields(
+  name: string,
+  expectedDelta: ExpectedDelta,
+): void {
+  const fields = expectedDelta.fields;
+  if (fields === undefined) return;
+  if (!Array.isArray(fields) || fields.length === 0) {
+    throw new Error(
+      `Capability ${name} expectedDelta.fields must be a non-empty array when present`,
+    );
+  }
+
+  if (expectedDelta.creates || expectedDelta.maybeCreates || expectedDelta.deletes) {
+    throw new Error(
+      `Capability ${name} expectedDelta.fields is only supported for in-place templates`,
+    );
+  }
+
+  const seen = new Set<string>();
+  for (const [i, field] of fields.entries()) {
+    if (!field || typeof field !== "object") {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] must be an object`,
+      );
+    }
+    if (typeof field.field !== "string" || field.field.length === 0) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] is missing field`,
+      );
+    }
+    if (!FIELD_CHECK_SCOPES.has(field.scope)) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] has unsupported scope`,
+      );
+    }
+    if (typeof field.paramPath !== "string" || field.paramPath.length === 0) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] is missing paramPath`,
+      );
+    }
+    if (field.paramPath.includes(".")) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] paramPath must be a top-level key`,
+      );
+    }
+    if (
+      field.tolerance !== undefined &&
+      (!Number.isFinite(field.tolerance) || field.tolerance < 0)
+    ) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] tolerance must be a finite non-negative number`,
+      );
+    }
+
+    const key = `${field.scope}:${field.field}`;
+    if (seen.has(key)) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields contains duplicate ${key}`,
+      );
+    }
+    seen.add(key);
   }
 }

@@ -119,6 +119,11 @@ envelope / note）无需改 dispatcher 即可加入。
 4. 成功信封**不变**（I3），`actual_delta` 仅在 verify 失败时进 `error.details`，
    或在显式 debug 模式下回传。**默认不污染锁定信封。**
 
+2026-06-30 note: Slice 04 landed structural count verification. Slice
+06 lands the first field-level subset for `item_pitch`, `item_move`,
+`item_rate`, and `track_rename`; the remaining templates stay Slice 07+
+scope.
+
 **触及文件**：
 - `packages/core/src/registry.ts`（`expectedDelta` 字段）
 - `packages/core/src/errors.ts`（`VERIFY_FAILED`）

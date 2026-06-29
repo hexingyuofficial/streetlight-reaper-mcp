@@ -244,6 +244,12 @@ type ExpectedDelta = {
   creates?: boolean;
   maybeCreates?: boolean;
   deletes?: boolean;
+  fields?: Array<{
+    scope: "take" | "item" | "track";
+    field: string;
+    paramPath: string;
+    tolerance?: number;
+  }>;
 };
 ```
 
@@ -265,11 +271,29 @@ Modes:
 `creates`, `maybeCreates`, and `deletes` are mutually exclusive.
 `maybeCreates` cannot be paired with `count:"any"`.
 
-This is intentionally not field-level verification. The bridge does not
-check that `D_PITCH` equals `params.semitones` or that a rendered WAV
-has the requested format. Those are later H2 slices. `render_region`
-omits `expectedDelta` in v0.1 because it is deferred and returns an
-artifact path, not a project-entity ref.
+Slice 06 adds field-level verification for a narrow in-place subset.
+When `expectedDelta.fields` is present, the MCP server sends the
+descriptor over the wire as `fields[].param_path`, and the bridge reads
+back the changed entity after the structural check passes but before
+`LAST_RESULT` is updated.
+
+| Template | Scope | Field | Expected value |
+|---|---|---|---|
+| `item_pitch` | `take` | `D_PITCH` | `params.semitones` |
+| `item_move` | `item` | `D_POSITION` | `params.position` |
+| `item_rate` | `take` | `D_PLAYRATE` | `params.rate` |
+| `track_rename` | `track` | `P_NAME` | `params.name` |
+
+Numeric checks use absolute `tolerance` when declared. String checks use
+strict equality. Field verification failure returns `VERIFY_FAILED`,
+`recoverable:false`, preserves the Slice 04 recovery phrase, and does
+not update `LAST_RESULT`.
+
+Field verification is intentionally not global yet. `item_trim`,
+`item_fade`, `item_duplicate`, `track_create`, `media_import`,
+`region_create`, and `render_region` remain Slice 07+ work.
+`render_region` still omits `expectedDelta` in v0.1 because it is
+deferred and returns an artifact path, not a project-entity ref.
 
 ## Reference Resolution (refs.lua)
 

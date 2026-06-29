@@ -177,6 +177,53 @@ return { templates = {
     );
   });
 
+  it("reports invalid expectedDelta fields descriptors", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 1,
+            creates: true,
+            fields: [
+              { scope: "take", field: "D_PITCH", paramPath: "take.pitch", tolerance: -1 },
+              { scope: "take", field: "D_PITCH", paramPath: "semitones" },
+              { scope: "fx", field: "", paramPath: "" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields are only supported for in-place templates",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[0] paramPath must be top-level",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[0] invalid tolerance",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: duplicate field take:D_PITCH",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[2] missing field",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[2] has invalid scope",
+    );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[2] missing paramPath",
+    );
+  });
+
   it("real core registry aligns with the real Lua manifest", async () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);

@@ -48,7 +48,12 @@ export const itemRateDefinition: CapabilityDefinition<
   entity_kind: "item",
   undo_flags: ["ITEMS"],
   idempotent: true,
-  expectedDelta: { count: 1 },
+  expectedDelta: {
+    count: 1,
+    fields: [
+      { scope: "take", field: "D_PLAYRATE", paramPath: "rate", tolerance: 1e-6 },
+    ],
+  },
   params: ItemRateParams,
   result: ItemRateResult,
   examples: [

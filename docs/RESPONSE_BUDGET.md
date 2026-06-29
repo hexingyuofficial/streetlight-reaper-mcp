@@ -332,7 +332,7 @@ handler produced addressable as a REAPER project entity? Yes → use the
 entity ref. No → it's a render-shaped output and you need to revisit
 this section before adding it.
 
-#### `VERIFY_FAILED` details (Slice 04)
+#### `VERIFY_FAILED` details (Slice 04 + Slice 06)
 
 Slice 04 adds structural verification metadata to mutating templates.
 When the bridge detects a mismatch between a template's `expectedDelta`
@@ -347,9 +347,24 @@ and the observed item/track/region count movement, it returns
 }
 ```
 
-This is intentionally compact and does not include descriptors or field
-diffs. The error message tells agents to call `get_state` because the
-mutation may already be applied.
+Slice 06 may append a compact `fields[]` array when field-level
+verification fails:
+
+```json
+{
+  "expected": { "count": 1, "fields": [{ "scope": "take", "field": "D_PITCH", "param_path": "semitones", "tolerance": 0.000001 }] },
+  "actual": { "items": 0, "tracks": 0, "regions": 0 },
+  "changed_count": 1,
+  "fields": [
+    { "scope": "take", "field": "D_PITCH", "expected": -3, "actual": 0, "tolerance": 0.000001, "ok": false }
+  ]
+}
+```
+
+v0.1 field verification is bounded to one field per call on four
+in-place templates, so the added payload is tiny. The error message
+still tells agents to call `get_state` because the mutation may already
+be applied.
 
 ### Empty Strings vs Missing Fields
 

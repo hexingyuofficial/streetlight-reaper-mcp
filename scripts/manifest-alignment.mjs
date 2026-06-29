@@ -149,6 +149,55 @@ function validateExpectedDeltaDescriptor(name, tsDef) {
         `EXPECTED_DELTA_INVALID:${name}: maybeCreates requires a numeric count`,
       );
     }
+    errors.push(...validateExpectedDeltaFields(name, expected));
+  }
+
+  return errors;
+}
+
+function validateExpectedDeltaFields(name, expected) {
+  const errors = [];
+  const fields = expected.fields;
+  if (fields === undefined) return errors;
+
+  if (!Array.isArray(fields) || fields.length === 0) {
+    return [`EXPECTED_DELTA_INVALID:${name}: fields must be a non-empty array when present`];
+  }
+  if (expected.creates || expected.maybeCreates || expected.deletes) {
+    errors.push(
+      `EXPECTED_DELTA_INVALID:${name}: fields are only supported for in-place templates`,
+    );
+  }
+
+  const seen = new Set();
+  for (const [i, field] of fields.entries()) {
+    if (!field || typeof field !== "object") {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] must be an object`);
+      continue;
+    }
+    if (typeof field.field !== "string" || field.field.length === 0) {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] missing field`);
+    }
+    if (!["take", "item", "track"].includes(field.scope)) {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] has invalid scope`);
+    }
+    if (typeof field.paramPath !== "string" || field.paramPath.length === 0) {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] missing paramPath`);
+    } else if (field.paramPath.includes(".")) {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] paramPath must be top-level`);
+    }
+    if (
+      field.tolerance !== undefined &&
+      (!Number.isFinite(field.tolerance) || field.tolerance < 0)
+    ) {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] invalid tolerance`);
+    }
+
+    const key = `${field.scope}:${field.field}`;
+    if (seen.has(key)) {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: duplicate field ${key}`);
+    }
+    seen.add(key);
   }
 
   return errors;

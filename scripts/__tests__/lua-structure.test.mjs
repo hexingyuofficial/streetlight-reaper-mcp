@@ -183,6 +183,31 @@ describe("Lua bridge structure", () => {
     expect(verify).toMatch(/expected 0 or \+%d \(maybeCreates\)/);
   });
 
+  it("wires Slice 06 field verification after count checks and before LAST_RESULT finalize", async () => {
+    const [bridge, verify] = await Promise.all([
+      readRepoFile("reaper/streetlight_bridge.lua"),
+      readRepoFile("reaper/packs/core/verify.lua"),
+    ]);
+
+    expect(verify).toMatch(/function M\.check_fields\(expected, changed_ids, params, entity_kind\)/);
+    expect(verify).toMatch(/FIELD_READERS\s*=\s*{/);
+    expect(verify).toMatch(/item\s*=\s*{ entity_kind = "item"/);
+    expect(verify).toMatch(/take\s*=\s*{ entity_kind = "item"/);
+    expect(verify).toMatch(/track\s*=\s*{ entity_kind = "track"/);
+    expect(verify).toMatch(/GetMediaItemInfo_Value/);
+    expect(verify).toMatch(/GetMediaItemTakeInfo_Value/);
+    expect(verify).toMatch(/GetSetMediaTrackInfo_String/);
+    expect(verify).toMatch(/field\.param_path or field\.paramPath/);
+
+    const checkIndex = bridge.indexOf("verify.check(expected_delta");
+    const fieldsIndex = bridge.indexOf("verify.check_fields(");
+    const finalizeIndex = bridge.indexOf("return finalize_template(name, entry.entity_kind, raw_changed)");
+    expect(checkIndex).toBeGreaterThan(0);
+    expect(fieldsIndex).toBeGreaterThan(checkIndex);
+    expect(finalizeIndex).toBeGreaterThan(fieldsIndex);
+    expect(bridge).toMatch(/fields = json\.array\(field_details or {}\)/);
+  });
+
   it("loads generated Lua error codes and passes them through the handler context", async () => {
     const [bridge, refs] = await Promise.all([
       readRepoFile("reaper/streetlight_bridge.lua"),

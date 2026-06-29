@@ -43,7 +43,17 @@ describe("listTemplates", () => {
     expect(callTemplateEnvelope).toBeDefined();
     expect(callTemplateEnvelope?.entity_kind).toBe("item");
     expect(callTemplateEnvelope?.undo_flags).toEqual(["ITEMS"]);
-    expect(callTemplateEnvelope?.expectedDelta).toEqual({ count: 1 });
+    expect(callTemplateEnvelope?.expectedDelta).toEqual({
+      count: 1,
+      fields: [
+        {
+          scope: "take",
+          field: "D_PITCH",
+          paramPath: "semitones",
+          tolerance: 1e-6,
+        },
+      ],
+    });
     expect(callTemplateEnvelope?.examples[0]?.params).toEqual({
       item_id: "selected:0",
       semitones: -12,
@@ -77,6 +87,42 @@ describe("listTemplates", () => {
     expect(trackCreate?.expectedDelta).toEqual({ count: 1, maybeCreates: true });
     const renderRegion = result.result.templates.find((t) => t.name === "render_region");
     expect(renderRegion).not.toHaveProperty("expectedDelta");
+  });
+
+  it("exposes Slice 06 field-check metadata only on the four in-place templates", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const expectedFieldsByTemplate = new Map([
+      [
+        "item_pitch",
+        [{ scope: "take", field: "D_PITCH", paramPath: "semitones", tolerance: 1e-6 }],
+      ],
+      [
+        "item_move",
+        [{ scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 }],
+      ],
+      [
+        "item_rate",
+        [{ scope: "take", field: "D_PLAYRATE", paramPath: "rate", tolerance: 1e-6 }],
+      ],
+      [
+        "track_rename",
+        [{ scope: "track", field: "P_NAME", paramPath: "name" }],
+      ],
+    ]);
+
+    for (const template of result.result.templates) {
+      const expectedFields = expectedFieldsByTemplate.get(template.name);
+      if (expectedFields !== undefined) {
+        expect(template.expectedDelta?.fields).toEqual(expectedFields);
+      } else if (template.expectedDelta !== undefined) {
+        expect(template.expectedDelta).not.toHaveProperty("fields");
+      }
+    }
   });
 
   it("serializes cleanly through JSON.stringify (no functions or cycles)", () => {

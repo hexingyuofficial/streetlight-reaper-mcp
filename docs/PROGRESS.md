@@ -11,8 +11,70 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 05 ✅ live-smoked / uncommitted
-(2026-06-29).** Architect packet lives at
+**Kernel hardening Slice 06 ✅ live-smoked
+(2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_06_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 06 is the first H2
+field-level verification slice: `ExpectedDelta` now accepts optional
+`fields[]` descriptors, four in-place templates declare one field
+postcheck each (`item_pitch`, `item_move`, `item_rate`,
+`track_rename`), `call_template` sends those descriptors over the
+queue inside `expected_delta.fields[]`, and `verify.lua` reads back
+the changed item/take/track field after structural verification but
+before `LAST_RESULT` is updated. Field mismatch returns typed
+`VERIFY_FAILED`, `recoverable:false`, preserves the Slice 04
+`call get_state` recovery phrase, and adds compact
+`error.details.fields[]`. Decisions locked by user: D1=a four-template
+subset; D2=a tolerance `1e-6`; D3=a fields nested in `expected_delta`;
+D4=a field failure does not update `LAST_RESULT`; D5=a fields cannot
+coexist with creates/maybeCreates/deletes yet. Static focused checks
+passed during implementation, and the full static baseline was green:
+`npm test` 254/254, `npm run build` clean, `npm run check:manifest`
+green, `npm run check:error-codes-fresh` green, and `git diff --check`
+clean. REAPER live smoke passed on REAPER 7.71/macOS-arm64 after a
+full quit/reopen and current `start_bridge.lua` run. Console showed
+`bridge starting (generation 1)`, `loaded error_codes (22 codes)`, and
+`bridge ready (generation 1) — loaded error_codes (22 codes)`.
+
+Slice 06 live smoke evidence (run id `1782752152900`): `ping`
+returned connected; `list_templates` returned 11 templates with
+`expectedDelta.fields[]` only on `item_pitch`, `item_move`,
+`item_rate`, and `track_rename`, while `render_region` still had no
+`expectedDelta`. Happy field-verified paths used track
+`guid:{70F9F13F-6930-6848-BAAA-C4CEEEAA3B8B}` and item
+`guid:{D6A8F3D7-6F6E-E74D-8B6B-33BD86BE1B80}`: `item_pitch
+semitones:-3`, `item_move position:5.0`, `item_rate rate:0.5`, and
+`track_rename` all returned the locked success envelope; extra
+zero-tolerance raw probes for `D_PITCH=-3`, `D_POSITION=5.0`, and
+`D_PLAYRATE=0.5` passed, so the `1e-6` tolerance was not too strict.
+The renamed track was visible in TCP / Track Manager as
+`smoke06-1782752152900-lastresult-after-fieldfail`.
+
+Forced failure evidence: raw `track_rename` with
+`expected_delta.fields[0].field="P_NAMEX"` returned
+`VERIFY_FAILED`, `recoverable:false`, retained the `call get_state`
+recovery phrase, and appended
+`details.fields[0]={scope:"track", field:"P_NAMEX",
+expected:"smoke06-1782752152900-badfield", actual:0, ok:false}`. A
+following `track_rename last_result:track:0` hit the same track GUID,
+proving field failure did not update `LAST_RESULT`. Raw `item_pitch`
+with structural mismatch
+`expected_delta={count:1,creates:true,fields:[...]}` returned
+structural `VERIFY_FAILED` first, with no top-level
+`error.details.fields`. Regression checks also passed:
+`item_fade`, `item_trim`, and `region_create` happy paths were
+unaffected (`region:smoke06-r-1782752152900`); `item_pitch
+selected:99` returned `ITEM_NOT_FOUND`; `region_create name:"a/b"`
+returned `REGION_NAME_INVALID`; `get_state(tracks, include:["fx"])`
+returned tracks with `fx:[]`; `get_state(render, include:["fx"])`
+returned `PARAMS_INVALID`; and bare `get_state(render)` returned
+`SCOPE_NOT_IMPLEMENTED`. Smoke objects remain in the open REAPER
+project for manual undo/delete, including two setup-only tracks from an
+early smoke-script selection assumption.
+
+**Kernel hardening Slice 05 ✅ live-smoked, committed, and pushed
+(2026-06-30, `5ba6318`).** Architect packet lives at
 `docs/plans/SLICE_05_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 05 closes the H5
@@ -21,33 +83,19 @@ generated `reaper/packs/core/error_codes.lua`, validates the 22-code
 table at boot, wires it into `refs.lua` via `attach_errs(ERRS)`, and
 passes `ctx.errs = ERRS` to every handler. Lua bridge, refs, and
 templates now use generated `ERRS.*` / `ctx.errs.*` constants instead
-of string-literal error codes. `scripts/error-codes.mjs check` now
-rejects runtime Lua literal forms (`code = "FOO"`,
-`raise("FOO")`, `raise(code or "FOO")`, `return nil, "FOO"`,
-including single-quoted variants) while still checking generated
-freshness. It also scans generated-code member references (`ERRS.*`,
-`errs.*`, `ctx.errs.*`) so misspelled constants fail statically.
-Reviewer found both audit gaps after the first Slice 05 code drop;
-they are now regression-tested. Focused static verification is green:
-`npm run check:error-codes-fresh` → 22 codes fresh + zero literal
-usage / zero unknown generated-code references; focused
-`error-codes` + `lua-structure` tests → 15/15.
-Full static baseline is green: `npm test` 248/248, `npm run build`
-clean, `npm run check:manifest` green, `npm run
-check:error-codes-fresh` green, and `git diff --check` clean. REAPER
-live smoke passed on REAPER 7.71/macOS-arm64 after a full quit/reopen
-and current `start_bridge.lua` run: console showed
-`loaded error_codes (22 codes)` both as a standalone startup line and
-inside the bridge ready line. Focused error paths returned
-`ITEM_NOT_FOUND`, `MEDIA_NOT_FOUND`, `REGION_NAME_INVALID`,
-`REF_INVALID`, `REGION_NOT_FOUND`, and raw-queue `VERIFY_FAILED`
-without any `INTERNAL_ERROR` degradation. `VERIFY_FAILED` was
-`recoverable:false`, included structured `{expected, actual,
-changed_count}` details, and carried the required `call get_state`
-recovery phrase. Happy `track_create` and follow-up
-`track_rename last_result:track:0` confirmed the locked success
-envelope and `LAST_RESULT` behavior before and after the forced
-verification failure.
+of string-literal error codes. `scripts/error-codes.mjs check` rejects
+runtime Lua literal forms including single-quoted variants and scans
+`ERRS.*` / `errs.*` / `ctx.errs.*` references for typos. Full static
+baseline was green: `npm test` 248/248, `npm run build` clean,
+`npm run check:manifest` green, `npm run check:error-codes-fresh`
+green, and `git diff --check` clean. REAPER live smoke passed on
+REAPER 7.71/macOS-arm64 after a full quit/reopen and current
+`start_bridge.lua` run: focused paths returned `ITEM_NOT_FOUND`,
+`MEDIA_NOT_FOUND`, `REGION_NAME_INVALID`, `REF_INVALID`,
+`REGION_NOT_FOUND`, and raw-queue `VERIFY_FAILED` without any
+`INTERNAL_ERROR` degradation; `VERIFY_FAILED` carried structured
+`{expected, actual, changed_count}` details and did not pollute
+`LAST_RESULT`.
 
 **Kernel hardening Slice 04 ✅ live-smoked, committed, and pushed
 (2026-06-29, `d3f8fe7`).** Architect packet lives at
@@ -578,6 +626,85 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
+### Kernel hardening Slice 06 (2026-06-30) — field-level verification ✅ live-smoked
+
+Scope: implement the first H2 field postcheck subset from
+`docs/plans/SLICE_06_ARCHITECT_PLAN.md`. Slice 04 verified structural
+count deltas; Slice 06 verifies that four in-place setters can be read
+back from REAPER after handler success and before `LAST_RESULT` updates.
+
+What changed:
+
+- `packages/core/src/registry.ts` — `ExpectedDelta` now accepts
+  optional `fields[]` descriptors with `{scope, field, paramPath,
+  tolerance?}`. Validation rejects empty arrays, unknown scope, dotted
+  `paramPath`, negative/non-finite tolerance, duplicate `(scope,field)`,
+  and fields on `creates` / `maybeCreates` / `deletes` templates.
+- `packages/mcp-server/src/templates/{item-pitch,item-move,item-rate,track-rename}.ts`
+  — four in-place templates declare one field check each:
+  `D_PITCH ← semitones`, `D_POSITION ← position`,
+  `D_PLAYRATE ← rate`, and `P_NAME ← name`.
+- `packages/mcp-server/src/tools/call-template.ts` — converts
+  metadata to bridge wire shape inside `expected_delta.fields[]`, using
+  `param_path` for Lua while keeping list_templates metadata as
+  `paramPath`.
+- `scripts/manifest-alignment.mjs` — extends static descriptor
+  validation so future templates cannot attach incoherent field checks.
+- `reaper/packs/core/verify.lua` — adds `check_fields()` with fixed
+  scope readers for item/take/track fields. It resolves the first
+  `changed_ids` GUID, reads the field back from REAPER, and compares to
+  the declared top-level param value with optional absolute tolerance.
+- `reaper/streetlight_bridge.lua` — calls field verification only after
+  structural verification passes and before `finalize_template`. On
+  mismatch, it returns `VERIFY_FAILED`, `recoverable:false`, compact
+  `details.fields[]`, and the existing `call get_state` recovery phrase;
+  `LAST_RESULT` is not updated.
+
+Decisions locked by user:
+
+- D1=a: only `item_pitch`, `item_move`, `item_rate`, and
+  `track_rename` in Slice 06.
+- D2=a: numeric tolerance `1e-6`.
+- D3=a: fields nested in `expected_delta`.
+- D4=a: field verify failure does not update `LAST_RESULT`.
+- D5=a: fields cannot coexist with creates/maybeCreates/deletes until a
+  later slice.
+
+Verification so far:
+
+- Focused registry/build tests passed while implementing.
+- Focused call-template/list-templates wire tests passed.
+- Focused manifest-alignment/check:manifest passed.
+- Focused lua-structure and check:error-codes-fresh passed.
+- `npm test` → 254/254 green, `npm run build` → clean, `npm run check:manifest` → green, `npm run check:error-codes-fresh` → green, and `git diff --check` → clean.
+- Live REAPER smoke passed on REAPER 7.71/macOS-arm64 after full
+  quit/reopen and current `start_bridge.lua` load. Console showed
+  generation 1 and `loaded error_codes (22 codes)`.
+- Smoke run id `1782752152900` used track
+  `guid:{70F9F13F-6930-6848-BAAA-C4CEEEAA3B8B}` and item
+  `guid:{D6A8F3D7-6F6E-E74D-8B6B-33BD86BE1B80}`. The four happy
+  field-verified paths passed, and zero-tolerance raw probes confirmed
+  `D_PITCH=-3`, `D_POSITION=5.0`, and `D_PLAYRATE=0.5`.
+- Raw `track_rename` with bad field `P_NAMEX` returned
+  `VERIFY_FAILED`, `recoverable:false`, retained the `call get_state`
+  recovery phrase, appended `details.fields[0].ok=false`, and did not
+  update `LAST_RESULT`.
+- Raw structural mismatch still failed before fields and returned no
+  top-level `error.details.fields`. Slice 05 error-code and Slice 02
+  `get_state include` regressions passed.
+
+Regression notes verified by live smoke:
+
+- Count verify must run before field verify. A forced count mismatch
+  should return Slice-04-shaped `VERIFY_FAILED` without `details.fields`.
+- Field verify failure should include `details.fields[0]` and should not
+  update `LAST_RESULT`.
+- Four happy envelopes must keep the locked success shape.
+- `render_region` and the seven non-Slice-06 templates must not gain
+  `expected_delta.fields`.
+- Slice 05 error-code constants must remain intact; no path should
+  degrade to `INTERNAL_ERROR`.
+
 ### Kernel hardening Slice 05 (2026-06-29) — Lua error-code constants activation ✅
 
 Scope: close the H5 follow-up from
@@ -681,10 +808,10 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-05 ✅ | Second-Mac smoke / release tag; commit only on explicit user ask |
-| Tests | 248/248 green + Slice 05 REAPER smoke ✅ | none for Slice 05 |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-06 ✅ | Second-Mac smoke / release tag; commit only on explicit user ask |
+| Tests | Slice 06: 254/254 green + REAPER smoke ✅ | none for Slice 06 |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 05 is now
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 06 is now
 live-smoked.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
@@ -722,12 +849,13 @@ tests). The second-Mac smoke per `docs/CROSS_MAC_SMOKE.md` is the
 remaining gate before any release tag. Kernel Slice 01 was committed
 and pushed at `baa13bd`; Slice 02 was committed and pushed at
 `e93d39e`; Slice 03 was committed and pushed at `4e80839`; Slice 04
-was committed and pushed at `d3f8fe7`. Slice 05 is the current
-uncommitted live-smoked H5 error-code activation slice.
+was committed and pushed at `d3f8fe7`; Slice 05 was committed and
+pushed at `5ba6318`. Slice 06 is the current uncommitted,
+live-smoked H2 field-verification slice.
 
 ### Next action
 
-1. **Commit/push Slice 05 only if the user explicitly asks.** It is
+1. **Commit/push Slice 06 only if the user explicitly asks.** It is
    static-green and REAPER-smoked, but versioning remains user-owned.
 2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
@@ -3391,13 +3519,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 05 is live-smoked and uncommitted.** Read
-   `docs/plans/SLICE_05_ARCHITECT_PLAN.md` before touching code.
-   Checks are green (`npm test` 248/248, build clean,
-   `check:manifest` green, `check:error-codes-fresh` green,
-   `git diff --check` clean), and REAPER smoke passed with
-   `loaded error_codes (22 codes)` in the ready line. Do not commit
-   unless the user explicitly asks.
+2. **Kernel hardening Slice 06 is live-smoked and uncommitted.** Read
+   `docs/plans/SLICE_06_ARCHITECT_PLAN.md` before touching code.
+   Static baseline is green (`npm test` 254/254, build,
+   `check:manifest`, `check:error-codes-fresh`, `git diff --check`),
+   and REAPER smoke passed on 7.71/macOS-arm64. Do not commit unless
+   the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

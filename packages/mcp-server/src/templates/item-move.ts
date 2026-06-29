@@ -56,7 +56,12 @@ export const itemMoveDefinition: CapabilityDefinition<
   entity_kind: "item",
   undo_flags: ["ITEMS"],
   idempotent: true,
-  expectedDelta: { count: 1 },
+  expectedDelta: {
+    count: 1,
+    fields: [
+      { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+    ],
+  },
   params: ItemMoveParams,
   result: ItemMoveResult,
   examples: [

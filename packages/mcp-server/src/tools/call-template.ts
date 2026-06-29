@@ -6,6 +6,7 @@ import {
   allow,
   type CallTemplateResult,
   type CapabilityRegistry,
+  type ExpectedDelta,
   type Result,
   type RiskPolicy,
 } from "@streetlight/core";
@@ -113,7 +114,28 @@ export async function callTemplate(
   return client.send<CallTemplateResult>(
     "template",
     params.data,
-    { timeoutMs: effectiveTimeout, expectedDelta: def.expectedDelta },
+    { timeoutMs: effectiveTimeout, expectedDelta: toWireExpectedDelta(def.expectedDelta) },
     def.name,
   );
+}
+
+function toWireExpectedDelta(
+  expectedDelta: ExpectedDelta | undefined,
+): unknown {
+  if (expectedDelta === undefined) return undefined;
+  return {
+    ...expectedDelta,
+    ...(expectedDelta.fields !== undefined
+      ? {
+          fields: expectedDelta.fields.map((field) => ({
+            scope: field.scope,
+            field: field.field,
+            param_path: field.paramPath,
+            ...(field.tolerance !== undefined
+              ? { tolerance: field.tolerance }
+              : {}),
+          })),
+        }
+      : {}),
+  };
 }

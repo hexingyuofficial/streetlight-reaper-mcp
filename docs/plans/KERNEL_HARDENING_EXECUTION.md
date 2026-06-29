@@ -123,6 +123,11 @@ undo 包裹路径（~L578）；读 `item.lua` 的 handler 写法（`item_pitch` 
 3. 校验不过 → 返回 `VERIFY_FAILED`（新错误码，`recoverable: false`）。`actual_delta` 放进
    `error.details`。
 
+2026-06-30 note: Slice 06 implements the field-postcheck subset for
+`item_pitch`, `item_move`, `item_rate`, and `track_rename`. Because it
+changes `verify.lua` and the bridge success path, live smoke must full
+quit/reopen REAPER before loading `start_bridge.lua`.
+
 ### 细化点（这步设计难点都在这里）
 - **不要做任意字段的全量 before/after diff**——太贵且 before 不可知（handler 内部才解析
   出受影响实体）。校验只覆盖两类**可知后置条件**：

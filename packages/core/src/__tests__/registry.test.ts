@@ -218,4 +218,143 @@ describe("CapabilityRegistry", () => {
       }),
     ).toThrow(/maybeCreates requires a numeric count/);
   });
+
+  it("accepts in-place expectedDelta field checks", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "field_checked",
+      description: "field checked",
+      pack: "test",
+      risk: "write_safe",
+      mutates: true,
+      undoable: true,
+      idempotent: true,
+      entity_kind: "item",
+      undo_flags: ["ITEMS"],
+      expectedDelta: {
+        count: 1,
+        fields: [
+          {
+            scope: "take",
+            field: "D_PITCH",
+            paramPath: "semitones",
+            tolerance: 1e-6,
+          },
+        ],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    expect(reg.list()[0]?.expectedDelta).toEqual({
+      count: 1,
+      fields: [
+        {
+          scope: "take",
+          field: "D_PITCH",
+          paramPath: "semitones",
+          tolerance: 1e-6,
+        },
+      ],
+    });
+  });
+
+  it("deep-copies expectedDelta fields in metadata", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "field_checked",
+      description: "field checked",
+      pack: "test",
+      risk: "write_safe",
+      mutates: true,
+      undoable: true,
+      idempotent: true,
+      entity_kind: "item",
+      undo_flags: ["ITEMS"],
+      expectedDelta: {
+        count: 1,
+        fields: [{ scope: "item", field: "D_POSITION", paramPath: "position" }],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    const first = reg.list()[0]?.expectedDelta;
+    expect(first?.fields?.[0]?.field).toBe("D_POSITION");
+    (first?.fields as Array<{ field: string }>)[0]!.field = "BROKEN";
+
+    const second = reg.list()[0]?.expectedDelta;
+    expect(second?.fields?.[0]?.field).toBe("D_POSITION");
+    expect(reg.get("field_checked")?.expectedDelta?.fields?.[0]?.field).toBe(
+      "D_POSITION",
+    );
+  });
+
+  it("rejects invalid expectedDelta field checks", () => {
+    const base = {
+      name: "bad_fields",
+      description: "bad",
+      pack: "test",
+      risk: "write_safe" as const,
+      mutates: true,
+      undoable: true,
+      idempotent: false,
+      entity_kind: "item",
+      undo_flags: ["ITEMS"] as const,
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    };
+
+    const registerWithExpectedDelta = (expectedDelta: unknown) => {
+      const reg = new CapabilityRegistry();
+      reg.register({ ...base, expectedDelta } as never);
+    };
+
+    expect(() =>
+      registerWithExpectedDelta({ count: 1, fields: [] }),
+    ).toThrow(/fields must be a non-empty array/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [{ scope: "take", paramPath: "semitones" }],
+      }),
+    ).toThrow(/missing field/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [{ scope: "fx", field: "D_PITCH", paramPath: "semitones" }],
+      }),
+    ).toThrow(/unsupported scope/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [{ scope: "take", field: "D_PITCH", paramPath: "take.pitch" }],
+      }),
+    ).toThrow(/top-level key/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [{ scope: "take", field: "D_PITCH", paramPath: "semitones", tolerance: -1 }],
+      }),
+    ).toThrow(/tolerance/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [
+          { scope: "take", field: "D_PITCH", paramPath: "semitones" },
+          { scope: "take", field: "D_PITCH", paramPath: "other" },
+        ],
+      }),
+    ).toThrow(/duplicate take:D_PITCH/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        creates: true,
+        fields: [{ scope: "track", field: "P_NAME", paramPath: "name" }],
+      }),
+    ).toThrow(/only supported for in-place templates/);
+  });
 });
