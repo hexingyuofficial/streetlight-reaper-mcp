@@ -11,6 +11,30 @@ first.
 
 ## Current Status
 
+**Kernel hardening Slice 01 ✅ live-smoked (2026-06-29), ready to commit.**
+Architect packet lives at `docs/plans/SLICE_01_ARCHITECT_PLAN.md`; the
+source master plans are `docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. This slice implements H1's
+data-driven entity routing plus H3's readonly `get_state(project)`,
+`get_state(tracks)`, and `get_state(regions)` scopes. Code/test
+baseline: `npm test` 216/216 green, `npm run build` clean. Focused
+reviewer re-review passed. Live smoke passed on REAPER
+7.71/macOS-arm64 after a full REAPER quit/reopen and launcher run:
+`ping` connected; `track_create` made smoke track
+`guid:{6EADD366-14F6-1641-AFD1-F0DA7CB84CEB}`; `media_import`
+inserted `/System/Library/Sounds/Ping.aiff` and produced
+`LAST_RESULT.items` with `guid:{0CA035D8-2829-724D-B6F7-0F1190C4C0D9}`;
+`get_state(project)`, `get_state(tracks)`, and `get_state(regions)`
+all returned ok; `item_fade` via `last_result:item:0` returned the
+same imported item GUID, proving readonly scopes did not touch
+`LAST_RESULT`; `get_state(render)` returned `SCOPE_NOT_IMPLEMENTED`.
+`docs/RESPONSE_BUDGET.md` is synchronized with the new locked
+`project` / `tracks` / `regions` shapes. Reviewer pass closed three
+pre-smoke issues: H1 now has a fake-entity routing test via
+`reaper/packs/core/lib/entity_buckets.lua`, HANDOFF smoke order now
+proves I7 as mutation → reads → `last_result:item:0`, and
+`docs/RESPONSE_BUDGET.md` is included in the Slice 01 doc surface.
+
 **Step 7 ✅ verified live (2026-06-29).** `list_templates` +
 `list_recipes` MCP tools shipped, `recipes/impact_variations.yaml`
 finalized, the four Step 6 open notes resolved in code (region-name
@@ -29,7 +53,8 @@ WAV-only, plus the focused preflight check (touch a `.wav.RPP` →
     experimental `install.cmd` / `install.ps1`, and shared
     `scripts/install.mjs` delegate to `npm install` → `npm run build`
     → `npm run setup` without changing the locked bridge/config
-    boundaries. Test bar is now 207/207 (+9 over release-prep).
+    boundaries. Kernel hardening Slice 01 lifts the test bar to
+    216/216 (+9 over the 207 beginner-installer baseline).
 Step 8 release polish closed across Round A (release-blocker code,
 +7 tests → 171/171) + Round C (docs + audit evaluation) the same
 window; Round B (Linux queue-dir) deferred to v0.2 by explicit user
@@ -214,9 +239,10 @@ below.
 | | Done | Remaining |
 |---|---|---|
 | Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅ | none (v0.1 release-polish complete; release-prep setup/launcher landed; second-Mac smoke is the open gate) |
-| Tests | 207/207 green | grows per step |
+| Tests | 216/216 green | grows per step |
 
-**9 / 9 steps shipped.** Step 6 (render) closed
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 01 is now
+commit-ready.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
 discovery + end-to-end demo) shipped 2026-06-29 in the same window:
@@ -254,20 +280,12 @@ remaining gate before any release tag.
 
 ### Next action
 
-1. **Second-Mac smoke / v0.1 release tag.** Setup/launcher reproducer
-   is ready; `docs/CROSS_MAC_SMOKE.md` is the live runbook. All
-   Streetlight-side open notes are resolved (see Step 7 §"Open items
-   for Step 8" for the disposition table) and the release-prep entry
-   below for the setup/launcher work. Optional work the user may
-   still pull in: **Vitest 2 → 4 major upgrade** (zero real-world
-   exposure on current usage; best in a dedicated session, see Step
-   8 Round C entry for full evaluation), and any **v0.2 scope items**
-   (Linux queue-dir resolver, idempotency tokens, socket transport,
-   configurable risk policy + done-sweep env overrides, foreground-
-   render chunked-tick loop).
-2. **No outstanding Step 7 work.** Probe scaffolding
-   (`reaper/streetlight_probe_renderconfig.lua`) removed at Step 7
-   close; the post-mortem lives in this file + the workflow memory.
+1. **Commit Slice 01 when the user asks.** Focused reviewer re-review
+   passed, `npm test` is 216/216 green, `npm run build` is clean, and
+   the live REAPER smoke above is green.
+2. **Second-Mac smoke / v0.1 release tag remains available after
+   Slice 01 commit.** Setup/launcher reproducer is ready;
+   `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 
 
 ## What's Done
@@ -2885,7 +2903,7 @@ list has no owner.
 cd /path/to/streetlight-reaper-mcp
 npm install
 npm run typecheck   # both packages
-npm test            # 131 tests, all passing
+npm test            # 216 tests, all passing
 npm run build       # writes dist/ in both packages
 ```
 
@@ -2897,23 +2915,23 @@ streetlight/
     RESPONSE_BUDGET.md                 # ← read before adding any new tool / scope
   packages/
     core/src/                          # kernel types and registry (Step 0)
-      types.ts                         # + CallTemplateResult locked shape
+      types.ts                         # descriptors + CallTemplateResult locked shape
       errors.ts                        # RESPONSE_TOO_LARGE added 2026-06-27
       queue.ts                         # hardened makeCommandId (Step 3); wire-kind↔MCP-tool map at top
     mcp-server/src/                    # MCP server + file queue (Step 1-3)
       transport/file-queue.ts
       transport/__tests__/fake-bridge.ts   # shared test harness
       tools/ping.ts
-      tools/get-state.ts               # limit field + safeParse for PARAMS_INVALID
+      tools/get-state.ts               # scope + limit field + safeParse for PARAMS_INVALID
       tools/call-template.ts           # Step 3 — validates against registry, no per-template special-casing
       templates/index.ts               # registerCoreTemplates(registry) — one-liner to add templates
       templates/item-pitch.ts          # Zod schemas + CapabilityDefinition for item_pitch
       index.ts                         # MCP get_state + call_template tools
-  reaper/                              # Lua bridge (Step 1-3)
-    streetlight_bridge.lua             # DISPATCH.template enforces locked shape at bridge boundary
+  reaper/                              # Lua bridge
+    streetlight_bridge.lua             # get_state + DISPATCH.template locked shape
     packs/core/
-      manifest.lua                     # registers item_pitch with undo metadata
-      refs.lua                         # selected:N + guid:{...} resolvers (Step 4 adds last_result + track_item)
+      manifest.lua                     # core template manifest + entity_buckets
+      refs.lua                         # item/track/region resolvers + resolver registry
       undo.lua                         # with_undo wrapper (EndBlock guaranteed)
       templates/item.lua               # item_pitch handler
       lib/json.lua
@@ -2925,32 +2943,21 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Step 7 is the live edge.** Step 6 closed 2026-06-29 (10/10
-   smoke green on REAPER 7.71/macOS-arm64 against the post-restart
-   single-chunk bridge, 146/146 TS). `render_region` is in, with the
-   bridge single-slot deferred-completion machinery, 10-key
-   snapshot/restore, probe-write-first `validate_output_dir`, and the
-   generation guard that makes `dofile` reload single-owner. WAV24
-   format blob is locked at `RENDER_FORMAT_WAV24_HEX = "5A 58 5A 68
-   64 78 67 41 41 41 3D 3D"` (do NOT re-prompt for a hex dump unless
-   a future smoke surfaces a format mismatch). Step 7 work:
-   `list_recipes` MCP tool + finalized 8-item end-to-end demo recipe.
-   Re-read `docs/RENDER_NOTES.md` and the four open notes in the
-   Step 6 verification subsection (region-name re-validation,
-   foreground-render + 55 s deadline, 100 ms file-stability window,
-   stale `RUNNING/` cleanup) before starting — all four surface
-   first in the 8-item render loop and need decisions early.
+2. **Kernel hardening Slice 01 is commit-ready.** Read
+   `docs/plans/SLICE_01_ARCHITECT_PLAN.md` before touching code. The
+   code-drop currently has 216/216 tests + clean build and the live
+   REAPER smoke green. Do not commit unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.
    Dispatcher enforces. New templates only need to return
    `{ changed_ids = [...] }`.
 
-5. **Step 4b contracts also locked.** Manifest `entity_kind` is
-   required on every template — missing entries log a warning and fall
-   back to `"item"`. `LAST_RESULT` has three buckets routed by it; new
-   templates that mutate regions in Step 5 will declare
-   `entity_kind = "region"` to land in `LAST_RESULT.regions`.
+5. **Entity routing contracts are locked.** Manifest `entity_kind` is
+   required on every template; Slice 01 derives routing from
+   `manifest.entity_buckets` with startup strict validation and keeps
+   runtime loud fallback to `"items"`. `LAST_RESULT` has the four v0.1
+   buckets: `items`, `tracks`, `regions`, `renders`.
    **Cross-bucket clear is also locked**: every successful mutation
    wipes the other buckets before writing its own (post-Step-4b fix).
 

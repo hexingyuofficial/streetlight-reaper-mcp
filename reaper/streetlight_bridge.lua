@@ -22,6 +22,7 @@ local SCRIPT_DIR = (function()
 end)()
 
 local json     = dofile(SCRIPT_DIR .. "packs/core/lib/json.lua")
+local buckets  = dofile(SCRIPT_DIR .. "packs/core/lib/entity_buckets.lua")
 local refs     = dofile(SCRIPT_DIR .. "packs/core/refs.lua")
 local undo     = dofile(SCRIPT_DIR .. "packs/core/undo.lua")
 local MANIFEST = dofile(SCRIPT_DIR .. "packs/core/manifest.lua")
@@ -96,29 +97,16 @@ log("loaded pack '" .. MANIFEST.name .. "' v" .. MANIFEST.version)
 -- persisted. Read-only commands (ping, get_state) MUST NOT touch this —
 -- its semantics are "what did the last mutation change".
 --
--- Entity buckets are routed by each template's manifest entry
--- `entity_kind` ("item" | "track" | "region"). Step 4b added the routing
--- because before it, `track_create`'s GUIDs would have silently landed
--- in `LAST_RESULT.items`. See refs.lua for the resolver side.
-local LAST_RESULT = { items = {}, regions = {}, tracks = {}, renders = {} }
-
--- Manifest's `entity_kind` strings map onto LAST_RESULT bucket names. Kept
--- as a small table (not just `kind .. "s"`) so a typo in a manifest entry
--- surfaces as an explicit lookup miss, not a silently-created `LAST_RESULT.foos`.
---
--- `render` is the Step 6 addition. Unlike items/tracks/regions, the
--- `renders` bucket holds absolute file paths (artifact outputs of
--- `render_region`), not project-entity refs. v0.1 has no
--- `last_result:render:N` resolver — it's reserved for v0.2 when a future
--- `media_import { path: "last_result:render:0" }` might want to chain a
--- rendered file back into the project. Until then the bucket exists so the
--- dispatcher's cross-bucket clear stays exhaustive.
-local ENTITY_BUCKET = {
-  item   = "items",
-  track  = "tracks",
-  region = "regions",
-  render = "renders",
-}
+-- Entity buckets are routed by each template's manifest entry `entity_kind`.
+-- Slice 01 made this data-driven from MANIFEST.entity_buckets so future
+-- entity families don't require edits to finalize_template. `render` still
+-- deliberately has a bucket but no resolver in v0.1: it stores artifact paths,
+-- not REAPER project refs.
+local ENTITY_BUCKET = buckets.build_entity_bucket_map(MANIFEST, {
+  strict = buckets.strict_manifest_enabled(os.getenv("STREETLIGHT_STRICT_MANIFEST")),
+  log = log,
+})
+local LAST_RESULT = buckets.make_last_result(ENTITY_BUCKET)
 
 -- ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -165,9 +153,8 @@ function DISPATCH.ping(cmd)
   }
 end
 
--- Scopes recognized by get_state. Only `selection` is implemented in v0.1;
--- the others are reserved names that return SCOPE_NOT_IMPLEMENTED so agents
--- know they're valid spellings of a not-yet-built feature.
+-- Scopes recognized by get_state. Slice 01 implements project/tracks/regions
+-- alongside selection; render stays reserved-but-unimplemented for v0.1.
 local KNOWN_SCOPES = {
   project    = true,
   tracks     = true,
@@ -199,6 +186,12 @@ local function get_track_name(track)
   return name or ""
 end
 
+local function get_track_guid(track)
+  if not track then return "" end
+  local _, guid = reaper.GetSetMediaTrackInfo_String(track, "GUID", "", false)
+  return guid or ""
+end
+
 local function get_take_name(item)
   local take = reaper.GetActiveTake(item)
   if not take then return "" end
@@ -223,7 +216,63 @@ local function build_item_descriptor(item)
   }
 end
 
--- Build the selection payload with item-boundary byte tracking.
+local function build_track_descriptor(track, index, depth)
+  return {
+    id     = "guid:" .. get_track_guid(track),
+    name   = get_track_name(track),
+    index  = index,
+    depth  = depth,
+    volume = reaper.GetMediaTrackInfo_Value(track, "D_VOL"),
+    pan    = reaper.GetMediaTrackInfo_Value(track, "D_PAN"),
+    mute   = reaper.GetMediaTrackInfo_Value(track, "B_MUTE") ~= 0,
+    solo   = reaper.GetMediaTrackInfo_Value(track, "I_SOLO") ~= 0,
+    recarm = reaper.GetMediaTrackInfo_Value(track, "I_RECARM") ~= 0,
+  }
+end
+
+local function append_descriptor_with_budget(items, bytes, desc)
+  local encoded    = json.encode(desc)
+  local item_bytes = #encoded
+  -- One byte for the comma separator that will sit between this descriptor
+  -- and the previous one in the final array.
+  local sep_bytes  = (#items > 0) and 1 or 0
+
+  if bytes + item_bytes + sep_bytes > MAX_RESPONSE_BYTES then
+    return false, bytes
+  end
+
+  items[#items + 1] = desc
+  return true, bytes + item_bytes + sep_bytes
+end
+
+local function response_too_large_message(kind)
+  return "Single " .. kind .. " descriptor exceeds the "
+    .. MAX_RESPONSE_BYTES .. " byte response cap"
+end
+
+local function read_project()
+  local ts_num, ts_den, tempo = reaper.TimeMap_GetTimeSigAtTime(0, 0)
+  if type(ts_num) ~= "number" or ts_num <= 0 then ts_num = 4 end
+  if type(ts_den) ~= "number" or ts_den <= 0 then ts_den = 4 end
+  if type(tempo) ~= "number" or tempo <= 0 then tempo = reaper.Master_GetTempo() end
+  if type(tempo) ~= "number" or tempo <= 0 then tempo = 120 end
+
+  local sample_rate = reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false)
+  if type(sample_rate) ~= "number" then sample_rate = 0 end
+
+  local length_seconds = reaper.GetProjectLength(0)
+  if type(length_seconds) ~= "number" then length_seconds = 0 end
+
+  return {
+    bpm            = tempo,
+    time_sig_num   = math.floor(ts_num),
+    time_sig_den   = math.floor(ts_den),
+    sample_rate    = sample_rate,
+    length_seconds = length_seconds,
+  }
+end
+
+-- Build list payloads with item-boundary byte tracking.
 -- Returns either:
 --   { ok = true,  items, total, returned, truncated, response_bytes }
 --   { ok = false, code = "RESPONSE_TOO_LARGE", message = ... }
@@ -246,32 +295,125 @@ local function read_selection(limit_raw)
   for i = 0, effective - 1 do
     local item = reaper.GetSelectedMediaItem(0, i)
     if item then
-      local desc       = build_item_descriptor(item)
-      local encoded    = json.encode(desc)
-      local item_bytes = #encoded
-      -- One byte for the comma separator that will sit between this item
-      -- and the previous one in the final array.
-      local sep_bytes  = (#items > 0) and 1 or 0
-
-      if bytes + item_bytes + sep_bytes > MAX_RESPONSE_BYTES then
+      local desc = build_item_descriptor(item)
+      local ok_append, new_bytes = append_descriptor_with_budget(items, bytes, desc)
+      if not ok_append then
         if #items == 0 then
           return {
             ok      = false,
             code    = "RESPONSE_TOO_LARGE",
-            message = "Single selected item exceeds the "
-              .. MAX_RESPONSE_BYTES .. " byte response cap",
+            message = response_too_large_message("selected item"),
           }
         end
         truncated = true
         break
       end
-
-      items[#items + 1] = desc
-      bytes = bytes + item_bytes + sep_bytes
+      bytes = new_bytes
     end
   end
 
   -- Limit-driven truncation: we read `effective` items but `total > effective`.
+  if total > #items then truncated = true end
+
+  return {
+    ok             = true,
+    items          = items,
+    total          = total,
+    returned       = #items,
+    truncated      = truncated,
+    response_bytes = bytes,
+  }
+end
+
+local function read_tracks(limit_raw)
+  local limit      = clamp_limit(limit_raw)
+  local total      = reaper.CountTracks(0)
+  local effective  = math.min(total, limit)
+  local items      = {}
+  local bytes      = 0
+  local truncated  = false
+  local depth      = 0
+
+  for i = 0, total - 1 do
+    local track = reaper.GetTrack(0, i)
+    if track and i < effective and not truncated then
+      local desc = build_track_descriptor(track, i, depth)
+      local ok_append, new_bytes = append_descriptor_with_budget(items, bytes, desc)
+      if not ok_append then
+        if #items == 0 then
+          return {
+            ok      = false,
+            code    = "RESPONSE_TOO_LARGE",
+            message = response_too_large_message("track"),
+          }
+        end
+        truncated = true
+      else
+        bytes = new_bytes
+      end
+    end
+
+    if track then
+      local delta = reaper.GetMediaTrackInfo_Value(track, "I_FOLDERDEPTH")
+      if type(delta) ~= "number" then delta = 0 end
+      depth = depth + math.floor(delta)
+      if depth < 0 then depth = 0 end
+    end
+  end
+
+  if total > #items then truncated = true end
+
+  return {
+    ok             = true,
+    items          = items,
+    total          = total,
+    returned       = #items,
+    truncated      = truncated,
+    response_bytes = bytes,
+  }
+end
+
+local function read_regions(limit_raw)
+  local limit      = clamp_limit(limit_raw)
+  local items      = {}
+  local bytes      = 0
+  local total      = 0
+  local truncated  = false
+  local cap_hit    = false
+  local i          = 0
+
+  while true do
+    local retval, isrgn, pos, rgnend, name = reaper.EnumProjectMarkers3(0, i)
+    if retval == 0 then break end
+
+    if isrgn then
+      total = total + 1
+      if total <= limit and not cap_hit then
+        local desc = {
+          name  = name or "",
+          start = pos,
+          ["end"] = rgnend,
+        }
+        local ok_append, new_bytes = append_descriptor_with_budget(items, bytes, desc)
+        if not ok_append then
+          if #items == 0 then
+            return {
+              ok      = false,
+              code    = "RESPONSE_TOO_LARGE",
+              message = response_too_large_message("region"),
+            }
+          end
+          cap_hit = true
+          truncated = true
+        else
+          bytes = new_bytes
+        end
+      end
+    end
+
+    i = i + 1
+  end
+
   if total > #items then truncated = true end
 
   return {
@@ -300,7 +442,7 @@ function DISPATCH.get_state(cmd)
     }
   end
 
-  if scope ~= "selection" then
+  if scope == "render" then
     return {
       ok = false,
       error = {
@@ -311,30 +453,75 @@ function DISPATCH.get_state(cmd)
     }
   end
 
-  local sel = read_selection(params.limit)
+  if scope == "project" then
+    return {
+      ok = true,
+      result = {
+        project = read_project(),
+      },
+    }
+  end
 
-  if not sel.ok then
+  local list
+  if scope == "selection" then
+    list = read_selection(params.limit)
+  elseif scope == "tracks" then
+    list = read_tracks(params.limit)
+  elseif scope == "regions" then
+    list = read_regions(params.limit)
+  end
+
+  if not list.ok then
     return {
       ok = false,
       error = {
-        code        = sel.code,
-        message     = sel.message,
+        code        = list.code,
+        message     = list.message,
         recoverable = true,
       },
     }
   end
 
-  -- Wrap items with json.array so an empty selection encodes as [], not {}.
-  return {
-    ok = true,
-    result = {
-      selection = {
-        items          = json.array(sel.items),
-        total          = sel.total,
-        returned       = sel.returned,
-        truncated      = sel.truncated,
-        response_bytes = sel.response_bytes,
+  -- Wrap items with json.array so empty lists encode as [], not {}.
+  local wrapped = {
+    items          = json.array(list.items),
+    total          = list.total,
+    returned       = list.returned,
+    truncated      = list.truncated,
+    response_bytes = list.response_bytes,
+  }
+
+  if scope == "selection" then
+    return {
+      ok = true,
+      result = {
+        selection = wrapped,
       },
+    }
+  end
+  if scope == "tracks" then
+    return {
+      ok = true,
+      result = {
+        tracks = wrapped,
+      },
+    }
+  end
+  if scope == "regions" then
+    return {
+      ok = true,
+      result = {
+        regions = wrapped,
+      },
+    }
+  end
+
+  return {
+    ok = false,
+    error = {
+      code        = "INTERNAL_ERROR",
+      message     = "Unhandled get_state scope: " .. tostring(scope),
+      recoverable = false,
     },
   }
 end

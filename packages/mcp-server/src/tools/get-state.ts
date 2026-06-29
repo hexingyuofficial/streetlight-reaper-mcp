@@ -3,9 +3,9 @@ import type { ProjectState, Result } from "@streetlight/core";
 import type { FileQueueClient } from "../transport/file-queue.js";
 
 /**
- * The full set of scopes named in ARCHITECTURE.md. v0.1 only implements
- * `selection`; the others are valid spellings that the bridge currently
- * rejects with SCOPE_NOT_IMPLEMENTED.
+ * The full set of scopes named in ARCHITECTURE.md. Slice 01 implements
+ * `selection`, `project`, `tracks`, and `regions`; `render` remains a
+ * reserved spelling that the bridge rejects with SCOPE_NOT_IMPLEMENTED.
  */
 export const GetStateScope = z.enum([
   "project",

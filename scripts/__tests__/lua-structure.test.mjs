@@ -1,0 +1,144 @@
+import { describe, expect, it } from "vitest";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "../..");
+
+async function readRepoFile(relPath) {
+  return fs.readFile(path.join(repoRoot, relPath), "utf8");
+}
+
+function jsBuildEntityBucketMap(manifest, { strict = true, warnings = [] } = {}) {
+  let declared = manifest.entity_buckets;
+  if (!declared || typeof declared !== "object") {
+    if (strict) {
+      throw new Error("manifest.entity_buckets is required when STREETLIGHT_STRICT_MANIFEST is on");
+    }
+    warnings.push("WARNING: manifest.entity_buckets missing; using legacy item/track/region/render buckets");
+    declared = {
+      item: "items",
+      track: "tracks",
+      region: "regions",
+      render: "renders",
+    };
+  }
+
+  const buckets = {};
+  for (const [kind, bucket] of Object.entries(declared)) {
+    if (kind !== "" && typeof bucket === "string" && bucket !== "") {
+      buckets[kind] = bucket;
+    } else if (strict) {
+      throw new Error("manifest.entity_buckets contains an invalid entry");
+    } else {
+      warnings.push(`WARNING: ignoring invalid entity_buckets entry '${kind}'`);
+    }
+  }
+
+  for (const [name, entry] of Object.entries(manifest.templates ?? {})) {
+    const kind = entry?.entity_kind;
+    if (typeof kind !== "string" || kind === "" || buckets[kind] === undefined) {
+      const msg = `template '${name}' declares unknown entity_kind '${String(kind)}'`;
+      if (strict) throw new Error(msg);
+      warnings.push(`WARNING: ${msg}; runtime fallback will use 'items'`);
+    }
+  }
+
+  return buckets;
+}
+
+function jsMakeLastResult(entityBuckets) {
+  return Object.fromEntries(Object.values(entityBuckets).map((bucket) => [bucket, []]));
+}
+
+describe("Lua bridge structure", () => {
+  it("keeps entity buckets in the manifest instead of hard-coding the dispatcher", async () => {
+    const [manifest, bridge] = await Promise.all([
+      readRepoFile("reaper/packs/core/manifest.lua"),
+      readRepoFile("reaper/streetlight_bridge.lua"),
+    ]);
+
+    expect(manifest).toMatch(/entity_buckets\s*=\s*{/);
+    expect(manifest).toMatch(/item\s*=\s*"items"/);
+    expect(manifest).toMatch(/track\s*=\s*"tracks"/);
+    expect(manifest).toMatch(/region\s*=\s*"regions"/);
+    expect(manifest).toMatch(/render\s*=\s*"renders"/);
+
+    expect(bridge).toMatch(/packs\/core\/lib\/entity_buckets\.lua/);
+    expect(bridge).toMatch(/buckets\.build_entity_bucket_map\(MANIFEST/);
+    expect(bridge).toMatch(/buckets\.make_last_result\(ENTITY_BUCKET\)/);
+    expect(bridge).not.toMatch(/local\s+ENTITY_BUCKET\s*=\s*{/);
+  });
+
+  it("keeps strict manifest validation default-on and runtime fallback loud", async () => {
+    const helper = await readRepoFile("reaper/packs/core/lib/entity_buckets.lua");
+
+    expect(helper).toMatch(/function M\.strict_manifest_enabled\(env_value\)/);
+    expect(helper).toMatch(/return not env_truthy_off\(env_value\)/);
+    expect(helper).toMatch(/template '.*declares unknown entity_kind/);
+    expect(helper).toMatch(/runtime fallback will use 'items'/);
+  });
+
+  it("proves fake entity families need no dispatcher hard-code", async () => {
+    const helper = await readRepoFile("reaper/packs/core/lib/entity_buckets.lua");
+    expect(helper).toMatch(/function M\.build_entity_bucket_map\(manifest, opts\)/);
+    expect(helper).toMatch(/function M\.make_last_result\(entity_buckets\)/);
+
+    const entityBuckets = jsBuildEntityBucketMap({
+      entity_buckets: {
+        item: "items",
+        track: "tracks",
+        widget: "widgets",
+      },
+      templates: {
+        item_pitch: { entity_kind: "item" },
+        widget_create: { entity_kind: "widget" },
+      },
+    });
+
+    expect(entityBuckets).toEqual({
+      item: "items",
+      track: "tracks",
+      widget: "widgets",
+    });
+    expect(jsMakeLastResult(entityBuckets)).toEqual({
+      items: [],
+      tracks: [],
+      widgets: [],
+    });
+  });
+
+  it("rejects unknown entity kinds in strict mode and logs fallback in non-strict mode", async () => {
+    const manifest = {
+      entity_buckets: { item: "items" },
+      templates: {
+        mystery_create: { entity_kind: "mystery" },
+      },
+    };
+
+    expect(() => jsBuildEntityBucketMap(manifest)).toThrow(
+      "template 'mystery_create' declares unknown entity_kind 'mystery'",
+    );
+
+    const warnings = [];
+    const buckets = jsBuildEntityBucketMap(manifest, { strict: false, warnings });
+    expect(buckets).toEqual({ item: "items" });
+    expect(warnings).toEqual([
+      "WARNING: template 'mystery_create' declares unknown entity_kind 'mystery'; runtime fallback will use 'items'",
+    ]);
+  });
+
+  it("exposes a data-driven resolver table while preserving named resolvers", async () => {
+    const refs = await readRepoFile("reaper/packs/core/refs.lua");
+
+    expect(refs).toMatch(/function M\.resolve_item\(ref, last_result\)/);
+    expect(refs).toMatch(/function M\.resolve_track\(ref, last_result\)/);
+    expect(refs).toMatch(/function M\.resolve_region\(ref, last_result\)/);
+    expect(refs).toMatch(/M\.RESOLVERS\s*=\s*{/);
+    expect(refs).toMatch(/item\s*=\s*M\.resolve_item/);
+    expect(refs).toMatch(/track\s*=\s*M\.resolve_track/);
+    expect(refs).toMatch(/region\s*=\s*M\.resolve_region/);
+    expect(refs).toMatch(/function M\.resolve\(entity_kind, ref, last_result\)/);
+  });
+});

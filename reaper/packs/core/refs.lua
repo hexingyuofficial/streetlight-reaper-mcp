@@ -472,4 +472,20 @@ function M.resolve_region(ref, last_result)
   return nil, "REF_INVALID", "Unrecognized region reference: " .. ref
 end
 
+M.RESOLVERS = {
+  item   = M.resolve_item,
+  track  = M.resolve_track,
+  region = M.resolve_region,
+}
+
+function M.resolve(entity_kind, ref, last_result)
+  local resolver = M.RESOLVERS[entity_kind]
+  if not resolver then
+    return nil,
+      "REF_INVALID",
+      "No resolver for entity kind '" .. tostring(entity_kind) .. "' in v0.1"
+  end
+  return resolver(ref, last_result)
+end
+
 return M

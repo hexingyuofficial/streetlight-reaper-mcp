@@ -26,7 +26,15 @@ export interface TrackDescriptor {
   id: string;
   /** Track name. `""` when the track is unnamed. */
   name: string;
+  /** Zero-based REAPER track index. Display/order hint, not a stable ref. */
   index: number;
+  /** Folder display depth before this track's folder-depth delta is applied. */
+  depth: number;
+  volume: number;
+  pan: number;
+  mute: boolean;
+  solo: boolean;
+  recarm: boolean;
 }
 
 export interface RegionDescriptor {
@@ -34,6 +42,14 @@ export interface RegionDescriptor {
   name: string;
   start: number;
   end: number;
+}
+
+export interface ProjectDescriptor {
+  bpm: number;
+  time_sig_num: number;
+  time_sig_den: number;
+  sample_rate: number;
+  length_seconds: number;
 }
 
 /**
@@ -57,8 +73,19 @@ export interface SelectionState extends ResponseBudgetMeta {
   items: ItemDescriptor[];
 }
 
+export interface TracksState extends ResponseBudgetMeta {
+  items: TrackDescriptor[];
+}
+
+export interface RegionsState extends ResponseBudgetMeta {
+  items: RegionDescriptor[];
+}
+
 export interface ProjectState {
-  selection: SelectionState;
+  selection?: SelectionState;
+  project?: ProjectDescriptor;
+  tracks?: TracksState;
+  regions?: RegionsState;
 }
 
 /** REAPER major.minor.patch version string, e.g. "7.21". */

@@ -29,8 +29,9 @@ So: response budget. It's accurate and it names what the code does.
 | Surface | Worst case | When implemented |
 |---|---|---|
 | `get_state scope=selection` | user selects every item in a 500-item project | v0.1 |
-| `get_state scope=tracks` | 200 tracks × FX chain metadata | v0.2 (still `SCOPE_NOT_IMPLEMENTED`) |
-| `get_state scope=project` | snapshot of everything | v0.3+ |
+| `get_state scope=tracks` | 200 tracks × descriptors now; FX chains later | Kernel hardening Slice 01 (FX deferred) |
+| `get_state scope=regions` | hundreds of timeline regions | Kernel hardening Slice 01 |
+| `get_state scope=project` | project summary now; full snapshot later | Kernel hardening Slice 01 (summary only) |
 | `list_templates` | 50 templates × full JSON Schema (~3 KB each) ≈ 150 KB | Step 3 |
 | `list_recipes` | 30 recipes × full YAML body | Step 7 |
 | `call_template` result | template mutates 500 items, returns all descriptors | Step 3 |
@@ -108,7 +109,7 @@ Everything else is roadmap.
 
 ## v0.1 Locked Shapes
 
-### `get_state` (scope: `selection`)
+### `get_state` (scopes: `selection`, `tracks`, `regions`)
 
 Input:
 
@@ -145,6 +146,63 @@ Output:
   }
 }
 ```
+
+`tracks` and `regions` use the same list envelope; the top-level result key
+changes to the scope name.
+
+`tracks.items[]` v1 descriptor:
+
+```json
+{
+  "id": "guid:{...}",
+  "index": 0,
+  "name": "Impacts",
+  "depth": 0,
+  "volume": 1,
+  "pan": 0,
+  "mute": false,
+  "solo": false,
+  "recarm": false
+}
+```
+
+`index` is an order/display hint, not a stable reference. Use `id` when you need
+to address the track later. FX chains are deliberately not included in Slice 01.
+
+`regions.items[]` v1 descriptor:
+
+```json
+{
+  "name": "var_01",
+  "start": 0,
+  "end": 1.25
+}
+```
+
+Region `name` is the v0.1 user-facing handle. REAPER's marker/region index is
+unstable across deletes and is not exposed as an id.
+
+### `get_state` (scope: `project`)
+
+`project` returns one small summary object and does not need list truncation.
+
+```json
+{
+  "ok": true,
+  "result": {
+    "project": {
+      "bpm": 120,
+      "time_sig_num": 4,
+      "time_sig_den": 4,
+      "sample_rate": 48000,
+      "length_seconds": 12.5
+    }
+  }
+}
+```
+
+`render` remains a reserved scope that returns `SCOPE_NOT_IMPLEMENTED` in
+Slice 01.
 
 Truncation is collapsed into one boolean: `truncated = true` when **either**
 `returned < total` (limit hit) or the byte cap was reached. The caller can tell
@@ -268,8 +326,10 @@ Things v0.1 does NOT defend against, listed so we don't get surprised:
   scope for the bridge — the calling agent or harness handles this.
 - **Logs / `ShowConsoleMsg` writes growing without bound.** Bridge logs go
   to REAPER's console, not over MCP. Still worth bounding eventually.
-- **`scope: tracks/project/render/regions` shipping without re-reading this
-  doc first.** Every new scope re-enters this design space.
+- **New `get_state` scopes shipping without re-reading this doc first.**
+  Every new scope re-enters this design space. `selection` / `tracks` /
+  `regions` / `project` are the Slice 01 baseline; `render`, FX-rich track
+  details, pagination, and projection still need fresh review.
 
 ## Process Note
 

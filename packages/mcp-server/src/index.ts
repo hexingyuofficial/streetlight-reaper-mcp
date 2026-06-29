@@ -55,7 +55,7 @@ async function main(): Promise<void> {
 
   server.tool(
     "get_state",
-    'Read a scoped subset of the REAPER project. v0.1 only implements scope="selection"; other scopes (project, tracks, regions, render) return SCOPE_NOT_IMPLEMENTED. `limit` (default 50, max 200) bounds list responses; the bridge also enforces an item-boundary byte cap and returns RESPONSE_TOO_LARGE if a single item exceeds it. See docs/RESPONSE_BUDGET.md.',
+    'Read a scoped subset of the REAPER project. Implemented scopes: "selection", "project", "tracks", "regions"; "render" is reserved and returns SCOPE_NOT_IMPLEMENTED. `limit` (default 50, max 200) bounds list responses; the bridge also enforces an item-boundary byte cap and returns RESPONSE_TOO_LARGE if a single descriptor exceeds it. See docs/RESPONSE_BUDGET.md.',
     {
       scope: GetStateScope.optional(),
       limit: z

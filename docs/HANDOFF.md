@@ -1,24 +1,54 @@
-# Handoff — 2026-06-29 (Step 7 ✅; Step 8 Round A + C ✅; release-prep setup/launcher ✅; v0.1 release-candidate ready)
+# Handoff — 2026-06-29 (Kernel hardening Slice 01 ✅ live-smoked; ready to commit)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
 ## Where the project is
 
 - Path: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`, git repo on
-  branch `main`. Local checkpoint `166d109` contains the Step 3 →
-  Step 8 Round A/C release-candidate pile. The current working tree
-  is the release-prep setup/launcher round (`scripts/setup.mjs`,
-  setup tests, INSTALL/CROSS_MAC_SMOKE/README/HANDOFF/PROGRESS
-  updates, `.gitignore` protection for `setup-out/` and
-  `style-memory-mcp/`). The user manages versioning out-of-band —
-  do NOT commit, branch, push, or reset without an explicit ask.
-  Read `git log` / `git status` if you need history context; treat
-  the working tree as theirs to commit.
-- `npm test` → **207/207 green** (164 Step-7-close baseline + 7 Round
-  A: 2 risk-policy enforce, 1 file-queue non-ENOENT wrap, 4 done/
-  orphan sweep; + 27 release-prep setup tests for
-  `scripts/setup.mjs`; +9 beginner-installer / Windows-setup tests).
-  `npm run build` → clean.
+  branch `main`. Recent checkpoints: `73864f7` beginner installers,
+  `7a1e4df` agent workflow + kernel hardening plans. The current
+  working tree is **Kernel hardening Slice 01** (uncommitted). The
+  user manages versioning out-of-band — do NOT commit, branch, push,
+  or reset without an explicit ask. Read `git log` / `git status` if
+  you need history context; treat the working tree as theirs to commit.
+- `npm test` → **216/216 green** (207 baseline + 9 Slice 01 tests:
+  get_state project/tracks/regions + render reserved + Slice-02
+  schema omission + Lua entity-routing guards). `npm run build` → clean.
+- **Kernel hardening Slice 01 ✅ (2026-06-29, focused re-review +
+  live smoke passed; uncommitted).** Scope from
+  `docs/plans/SLICE_01_ARCHITECT_PLAN.md`:
+  - H1: `reaper/packs/core/manifest.lua` now exposes
+    `entity_buckets`; `reaper/packs/core/lib/entity_buckets.lua`
+    owns pure bucket helpers; `reaper/streetlight_bridge.lua` derives
+    `ENTITY_BUCKET` / `LAST_RESULT` from it, validates template
+    `entity_kind` at startup with `STREETLIGHT_STRICT_MANIFEST`
+    default ON, and keeps runtime loud-log fallback to `items`.
+    `reaper/packs/core/refs.lua` adds `M.RESOLVERS` +
+    `M.resolve(kind, ref, last_result)` while preserving existing
+    named resolvers.
+  - H3 readonly: `get_state(project)` returns `{bpm,time_sig_num,
+    time_sig_den,sample_rate,length_seconds}`; `get_state(tracks)`
+    returns bounded track descriptors (`id`, `index`, `name`, `depth`,
+    `volume`, `pan`, `mute`, `solo`, `recarm`); `get_state(regions)`
+    returns bounded `{name,start,end}` descriptors. `selection` is
+    unchanged; `render` remains `SCOPE_NOT_IMPLEMENTED`.
+  - Deferred by design: `include`, `fields`, and `cursor` are not in
+    the schema; FX is not read; no write/template behavior changes.
+  - `docs/RESPONSE_BUDGET.md` now documents the new locked shapes for
+    project/tracks/regions and keeps `render` / FX / pagination /
+    projection deferred.
+  - Live smoke proof (2026-06-29, REAPER 7.71/macOS-arm64): after a
+    full REAPER quit/reopen and launcher run, `ping` returned
+    connected. In a fresh project, `track_create` made smoke track
+    `guid:{6EADD366-14F6-1641-AFD1-F0DA7CB84CEB}`;
+    `media_import` inserted `/System/Library/Sounds/Ping.aiff` and
+    produced `LAST_RESULT.items` with
+    `guid:{0CA035D8-2829-724D-B6F7-0F1190C4C0D9}`. Then
+    `get_state(project)`, `get_state(tracks)`, and
+    `get_state(regions)` all returned ok; `item_fade` via
+    `last_result:item:0` returned the same imported item GUID,
+    proving readonly scopes did not touch `LAST_RESULT`;
+    `get_state(render)` returned `SCOPE_NOT_IMPLEMENTED`.
 - **Steps 4, 5, 6, 7 fully ✅** — see prior PROGRESS for details.
   Bridge is single-owner after `dofile` reload (generation guard
   from Step 6 mid-smoke fix #2 + Step 7 B4 startup
@@ -151,8 +181,8 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     populated, bridge alive. Cross-Mac flow is exercised end-to-end
     on this Mac; second-Mac smoke per `docs/CROSS_MAC_SMOKE.md` is
     the next gate.
-- **Beginner installer round (after release-prep checkpoint, not yet
-  committed at this handoff).** Added low-risk one-click wrappers:
+- **Beginner installer round (committed at `73864f7`).** Added
+  low-risk one-click wrappers:
   `install.command` for macOS, `install.cmd` + `install.ps1` for
   Windows experimental, and `scripts/install.mjs` as the shared Node
   wrapper. It delegates to the existing chain (`npm install` →
@@ -218,34 +248,29 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Run the second-Mac smoke" / "tag v0.1" / "ship."** Step 8
-       Round A + C ✅ and the release-prep setup/launcher landed +
-       manual gate passed on this Mac. v0.1 is at release-candidate.
-       The unfinished gate is `docs/CROSS_MAC_SMOKE.md` actually run
-       on a second Mac (or this one after a fresh clone). Optional
-       work the user may still pull in: **Vitest 2 → 4 major
-       upgrade** (zero real-world exposure on current usage — `npm
-       audit --omit=dev` clean — best in a dedicated session, not
-       glued to release; see HANDOFF "Round C" bullet for the full
-       evaluation), and any **v0.2 items** the user wants to scope
-       (Linux queue-dir resolver, idempotency tokens, socket
-       transport, configurable risk policy + done-sweep env
-       overrides, foreground-render chunked-tick loop).
+   (a) **"Commit Slice 01."** Slice 01 has focused re-review + live
+       smoke green. Current baseline is `npm test` 216/216 +
+       `npm run build` clean; smoke evidence is above and in
+       `docs/PROGRESS.md`. Review `git diff`, then commit if the user
+       explicitly asks.
 
-   (b) **"Codex found a bug in Round A/C, release-prep, or earlier."**
-       Locked iteration loop: confirm the bug from code → name the
-       fix + any decision the user owns BEFORE editing → propose 1-2
-       tight regression notes → wait for sign-off → fix → hand back
-       for re-test. Never preemptively flip ✅. Round A and
-       release-prep bugs round-trip TS-only (no live REAPER needed
-       unless behavior reaches the bridge or the launcher); Round C
-       bugs are docs-only; earlier-step bugs take the full live
-       REAPER loop.
+   (b) **"Re-run Slice 01 smoke."** Only needed if new code changes
+       land. Fully quit/reopen REAPER first, then repeat the proven
+       I7 order: item mutation → `get_state(project)` →
+       `get_state(tracks)` → `get_state(regions)` →
+       `last_result:item:0` harmless item template →
+       `get_state(render)` = `SCOPE_NOT_IMPLEMENTED`.
 
-   (c) **Pivot to something else.** Abandon these first moves and
+   (c) **"Codex found a bug in Slice 01 or earlier."** Locked
+       iteration loop: confirm the bug from code → name the fix + any
+       decision the user owns BEFORE editing → propose 1-2 tight
+       regression notes → wait for sign-off → fix → hand back for
+       re-test. Never preemptively flip ✅.
+
+   (d) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 207/207,
+2. **Tests + build baseline this window:** `npm test` 216/216,
    `npm run build` clean. The `npm run typecheck` script prints a
    `TS6310` "may not disable emit" line then exits 0 — pre-existing
    project setup, do not chase. The `[streetlight-mcp] done-sweep:
@@ -255,8 +280,7 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
 3. **Git out-of-band.** Do not commit, branch, push, reset. The
    working tree is the user's; multi-window working pile is
-   intentional (Step 3 → Step 8 Round A + Round C + release-prep
-   setup/launcher + `package-lock.json`). `style-memory-mcp/` is the
+   intentional. `style-memory-mcp/` is the
    user's separate repo (`https://github.com/hexingyuofficial/style-memory-mcp.git`)
    nested under this tree; it's in `.gitignore` and stays untouched.
 

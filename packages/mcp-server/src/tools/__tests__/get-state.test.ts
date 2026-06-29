@@ -34,6 +34,26 @@ function fakeSelection(items: unknown[], extra: Partial<{
   };
 }
 
+function fakeList(
+  key: "tracks" | "regions",
+  items: unknown[],
+  extra: Partial<{
+    total: number;
+    truncated: boolean;
+    response_bytes: number;
+  }> = {},
+): Record<"tracks" | "regions", unknown> {
+  return {
+    [key]: {
+      items,
+      total: extra.total ?? items.length,
+      returned: items.length,
+      truncated: extra.truncated ?? false,
+      response_bytes: extra.response_bytes ?? 0,
+    },
+  } as Record<"tracks" | "regions", unknown>;
+}
+
 describe("getState", () => {
   let queueDir: string;
   let client: FileQueueClient;
@@ -174,17 +194,130 @@ describe("getState", () => {
     }
   });
 
-  it("surfaces SCOPE_NOT_IMPLEMENTED from the bridge", async () => {
+  it("returns project state from the bridge", async () => {
     const bridge = startFakeBridge(queueDir, () => ({
-      ok: false,
-      error: {
-        code: "SCOPE_NOT_IMPLEMENTED",
-        message: "scope 'project' is not implemented in v0.1",
-        recoverable: true,
+      ok: true,
+      result: {
+        project: {
+          bpm: 128,
+          time_sig_num: 4,
+          time_sig_den: 4,
+          sample_rate: 48000,
+          length_seconds: 12.5,
+        },
       },
     }));
     try {
       const result = await getState(client, { scope: "project" });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.result.project).toEqual({
+          bpm: 128,
+          time_sig_num: 4,
+          time_sig_den: 4,
+          sample_rate: 48000,
+          length_seconds: 12.5,
+        });
+      }
+      expect(bridge.seen[0]!.params).toEqual({ scope: "project", limit: 50 });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("returns track descriptors from the bridge", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("tracks", [
+        {
+          id: "guid:{TRACK-A}",
+          name: "Drums",
+          index: 0,
+          depth: 0,
+          volume: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          recarm: true,
+        },
+        {
+          id: "guid:{TRACK-B}",
+          name: "Impacts",
+          index: 1,
+          depth: 1,
+          volume: 0.75,
+          pan: -0.2,
+          mute: false,
+          solo: true,
+          recarm: false,
+        },
+      ], { response_bytes: 248 }),
+    }));
+    try {
+      const result = await getState(client, { scope: "tracks" });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const tracks = result.result.tracks;
+        expect(tracks.items).toHaveLength(2);
+        expect(tracks.items[0]).toMatchObject({
+          id: "guid:{TRACK-A}",
+          name: "Drums",
+          index: 0,
+          depth: 0,
+          recarm: true,
+        });
+        expect(tracks.items[1]).toMatchObject({
+          id: "guid:{TRACK-B}",
+          name: "Impacts",
+          index: 1,
+          depth: 1,
+          solo: true,
+        });
+        expect(tracks.response_bytes).toBe(248);
+      }
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("returns region descriptors from the bridge", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("regions", [
+        { name: "var_01", start: 0, end: 1.2 },
+        { name: "var_02", start: 2, end: 3.5 },
+      ], { response_bytes: 88 }),
+    }));
+    try {
+      const result = await getState(client, { scope: "regions" });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const regions = result.result.regions;
+        expect(regions.items).toEqual([
+          { name: "var_01", start: 0, end: 1.2 },
+          { name: "var_02", start: 2, end: 3.5 },
+        ]);
+        expect(regions.total).toBe(2);
+        expect(regions.returned).toBe(2);
+        expect(regions.truncated).toBe(false);
+      }
+      expect(bridge.seen[0]!.params).toEqual({ scope: "regions", limit: 50 });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("surfaces SCOPE_NOT_IMPLEMENTED from the bridge for reserved render scope", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: false,
+      error: {
+        code: "SCOPE_NOT_IMPLEMENTED",
+        message: "scope 'render' is not implemented in v0.1",
+        recoverable: true,
+      },
+    }));
+    try {
+      const result = await getState(client, { scope: "render" });
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("SCOPE_NOT_IMPLEMENTED");
@@ -221,16 +354,25 @@ describe("getState", () => {
 
   it("forwards an explicit scope on the wire", async () => {
     const bridge = startFakeBridge(queueDir, () => ({
-      ok: false,
-      error: {
-        code: "SCOPE_NOT_IMPLEMENTED",
-        message: "not yet",
-        recoverable: true,
-      },
+      ok: true,
+      result: fakeList("regions", []),
     }));
     try {
       await getState(client, { scope: "regions" });
       expect(bridge.seen[0]!.params).toEqual({ scope: "regions", limit: 50 });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("does not publish Slice 02 include params on the wire", async () => {
+    const bridge = startFakeBridge(queueDir, () => ({
+      ok: true,
+      result: fakeList("tracks", []),
+    }));
+    try {
+      await getState(client, { scope: "tracks", include: ["fx"] } as never);
+      expect(bridge.seen[0]!.params).toEqual({ scope: "tracks", limit: 50 });
     } finally {
       await bridge.stop();
     }

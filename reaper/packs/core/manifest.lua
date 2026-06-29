@@ -10,7 +10,7 @@
 --   undoable    : whether to wrap the handler in undo.with_undo
 --   undo_label  : the string the user sees in REAPER's undo history
 --   undo_flags  : UNDO_STATE_* bitmask passed to Undo_EndBlock2
---   entity_kind : "item" | "track" | "region" — which LAST_RESULT bucket
+--   entity_kind : key in `entity_buckets` — which LAST_RESULT bucket
 --                 the dispatcher writes `changed_ids` into. Required.
 --                 Routes `last_result:<kind>:N` resolution to the right
 --                 store; without this, a `track_create` ID would silently
@@ -36,6 +36,16 @@ local render_templates = dofile(PACK_DIR .. "templates/render.lua")
 return {
   name = "core",
   version = "0.1.0",
+  -- Single source for bridge LAST_RESULT bucket routing. Adding a new
+  -- entity family should add one entry here and, only if refs are needed,
+  -- register a resolver in refs.lua. `render` deliberately has a bucket
+  -- but no resolver in v0.1.
+  entity_buckets = {
+    item   = "items",
+    track  = "tracks",
+    region = "regions",
+    render = "renders",
+  },
   templates = {
     item_pitch = {
       handler     = item_templates.item_pitch,
