@@ -42,7 +42,15 @@ export const trackRenameDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "track",
+  undo_flags: ["TRACKCFG"],
   idempotent: true,
   params: TrackRenameParams,
   result: TrackRenameResult,
+  examples: [
+    {
+      description: "Rename the most recently changed track.",
+      params: { track_id: "last_result:track:0", name: "Impacts" },
+    },
+  ],
 };

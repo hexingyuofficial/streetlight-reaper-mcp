@@ -324,9 +324,12 @@ describe("callTemplate", () => {
         risk: RiskLevels.destructive,
         mutates: true,
         undoable: false,
+        entity_kind: "item",
+        undo_flags: [],
         idempotent: false,
         params: z.object({}).strict(),
         result: z.object({}),
+        examples: [{ params: {} }],
       });
     }
 

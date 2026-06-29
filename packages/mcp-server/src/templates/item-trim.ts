@@ -54,7 +54,15 @@ export const itemTrimDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS"],
   idempotent: true,
   params: ItemTrimParams,
   result: ItemTrimResult,
+  examples: [
+    {
+      description: "Trim the first selected item to one second.",
+      params: { item_id: "selected:0", length: 1 },
+    },
+  ],
 };

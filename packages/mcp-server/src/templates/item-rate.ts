@@ -45,7 +45,15 @@ export const itemRateDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS"],
   idempotent: true,
   params: ItemRateParams,
   result: ItemRateResult,
+  examples: [
+    {
+      description: "Slow the first selected item to half speed.",
+      params: { item_id: "selected:0", rate: 0.5 },
+    },
+  ],
 };

@@ -30,6 +30,10 @@ describe("listTemplates", () => {
     expect(renderRegion.pack).toBe("core");
     expect(renderRegion.risk).toBe("filesystem");
     expect(renderRegion.undoable).toBe(false);
+    expect(renderRegion.entity_kind).toBe("render");
+    expect(renderRegion.undo_flags).toEqual([]);
+    expect(renderRegion.examples.length).toBeGreaterThanOrEqual(1);
+    expect(renderRegion.examples[0]!.params).toHaveProperty("region_id");
     expect(renderRegion.idempotent).toBe(false);
     expect(renderRegion.mutates).toBe(true);
     expect(renderRegion.params_schema).toBeDefined();
@@ -37,6 +41,35 @@ describe("listTemplates", () => {
 
     const callTemplateEnvelope = templates.find((t) => t.name === "item_pitch");
     expect(callTemplateEnvelope).toBeDefined();
+    expect(callTemplateEnvelope?.entity_kind).toBe("item");
+    expect(callTemplateEnvelope?.undo_flags).toEqual(["ITEMS"]);
+    expect(callTemplateEnvelope?.examples[0]?.params).toEqual({
+      item_id: "selected:0",
+      semitones: -12,
+    });
+  });
+
+  it("returns descriptor metadata for every core template", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    for (const template of result.result.templates) {
+      expect(template.entity_kind).toMatch(/^(item|track|region|render)$/);
+      expect(Array.isArray(template.undo_flags)).toBe(true);
+      expect(template.examples.length).toBeGreaterThanOrEqual(1);
+      expect(template).not.toHaveProperty("expectedDelta");
+      expect(template).not.toHaveProperty("reads");
+      expect(template).not.toHaveProperty("writes");
+
+      if (template.undoable) {
+        expect(template.undo_flags.length).toBeGreaterThan(0);
+      } else {
+        expect(template.undo_flags).toEqual([]);
+      }
+    }
   });
 
   it("serializes cleanly through JSON.stringify (no functions or cycles)", () => {
@@ -56,9 +89,12 @@ describe("listTemplates", () => {
       risk: "read" as const,
       mutates: false,
       undoable: false,
+      entity_kind: "item",
+      undo_flags: [],
       idempotent: true,
       params: z.object({}),
       result: z.object({}),
+      examples: [{ params: {} }],
     };
     registry.register({ name: "a_first", description: "first", ...base });
     registry.register({ name: "b_second", description: "second", ...base });

@@ -53,8 +53,16 @@ export const trackCreateDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "track",
+  undo_flags: ["TRACKCFG"],
   // Not idempotent: calling twice with reuse_existing=false produces two tracks.
   idempotent: false,
   params: TrackCreateParams,
   result: TrackCreateResult,
+  examples: [
+    {
+      description: "Create or reuse a track for impact variations.",
+      params: { name: "Streetlight - Impact Variations", reuse_existing: true },
+    },
+  ],
 };

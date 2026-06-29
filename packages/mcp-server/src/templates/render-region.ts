@@ -74,6 +74,8 @@ export const renderRegionDefinition: CapabilityDefinition<
   // the result there's nothing project-side to undo. The produced WAV file
   // lives outside the project state; deleting it is the agent's job.
   undoable: false,
+  entity_kind: "render",
+  undo_flags: [],
   // Two calls with the same { region_id, output_dir } against the same
   // region content WOULD produce the same WAV bytes, but the SECOND call
   // returns OUTPUT_FILE_EXISTS (we refuse to overwrite). Pure-function
@@ -82,4 +84,13 @@ export const renderRegionDefinition: CapabilityDefinition<
   params: RenderRegionParams,
   result: RenderRegionResult,
   timeoutMs: RENDER_REGION_TIMEOUT_MS,
+  examples: [
+    {
+      description: "Render a region to a folder as WAV-24 stereo.",
+      params: {
+        region_id: "region:var_01",
+        output_dir: "/Users/Shared/streetlight-renders",
+      },
+    },
+  ],
 };

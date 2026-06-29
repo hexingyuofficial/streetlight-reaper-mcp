@@ -348,6 +348,41 @@ underlying object is unnamed in REAPER, the value is `""`.
 
 This is a deliberate v0.1 contract. Don't "fix" it without a written reason.
 
+### `list_templates` Metadata (Slice 03)
+
+`list_templates` returns registry metadata only; it never touches the REAPER
+bridge. Slice 03 enriches every template entry with H5 descriptor fields:
+
+```json
+{
+  "name": "item_pitch",
+  "description": "Set the active take's pitch...",
+  "pack": "core",
+  "risk": "write_safe",
+  "mutates": true,
+  "undoable": true,
+  "entity_kind": "item",
+  "undo_flags": ["ITEMS"],
+  "idempotent": true,
+  "examples": [
+    {
+      "description": "Pitch the first selected item down one octave.",
+      "params": { "item_id": "selected:0", "semitones": -12 }
+    }
+  ],
+  "params_schema": {},
+  "result_schema": {}
+}
+```
+
+`entity_kind`, `undo_flags`, and `examples` are required on every descriptor.
+`render_region` is the v0.1 non-undoable carve-out and reports
+`undo_flags: []`.
+
+`expectedDelta`, `reads`, and `writes` are Slice-03 placeholders for H2/H6.
+When absent, they are omitted from metadata; do not emit `null` or empty
+arrays to imply semantics that are not active yet.
+
 ## Deferred To v0.2 / v0.3
 
 These are mentioned in `docs/ROADMAP.md`. They build on the v0.1 backstop

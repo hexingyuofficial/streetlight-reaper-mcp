@@ -111,9 +111,17 @@ export const regionCreateDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "region",
+  undo_flags: ["MISCCFG"],
   // Not idempotent: a second call with the same name returns REGION_NAME_TAKEN
   // (and creates no marker), but the first call DID create one.
   idempotent: false,
   params: RegionCreateParams,
   result: RegionCreateResult,
+  examples: [
+    {
+      description: "Create a two-second region named var_01.",
+      params: { name: "var_01", start: 0, end: 2 },
+    },
+  ],
 };

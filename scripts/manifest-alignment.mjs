@@ -1,0 +1,188 @@
+#!/usr/bin/env node
+
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+export const MANIFEST_FORMAT_UNEXPECTED = "MANIFEST_FORMAT_UNEXPECTED";
+
+const UNDO_FLAG_FROM_LUA = {
+  UNDO_STATE_TRACKCFG: "TRACKCFG",
+  UNDO_STATE_FX: "FX",
+  UNDO_STATE_ITEMS: "ITEMS",
+  UNDO_STATE_MISCCFG: "MISCCFG",
+  UNDO_STATE_FREEZE: "FREEZE",
+};
+
+function sorted(values) {
+  return [...values].sort();
+}
+
+export function stripLuaLineComments(text) {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/--.*$/, ""))
+    .join("\n");
+}
+
+function parseTemplateBlock(body, name, startIndex) {
+  const open = body.indexOf("{", startIndex);
+  if (open === -1) {
+    throw new Error(`${MANIFEST_FORMAT_UNEXPECTED}: missing opening block for ${name}`);
+  }
+
+  let depth = 0;
+  for (let i = open; i < body.length; i += 1) {
+    const c = body[i];
+    if (c === "{") depth += 1;
+    if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return body.slice(open + 1, i);
+    }
+  }
+  throw new Error(`${MANIFEST_FORMAT_UNEXPECTED}: unclosed block for ${name}`);
+}
+
+export function parseManifestLua(text) {
+  text = stripLuaLineComments(text);
+  const templatesStart = text.indexOf("templates = {");
+  if (templatesStart === -1) {
+    throw new Error(`${MANIFEST_FORMAT_UNEXPECTED}: templates table not found`);
+  }
+
+  const found = new Map();
+  const entryRe = /([A-Za-z0-9_]+)\s*=\s*\{/g;
+  entryRe.lastIndex = templatesStart;
+
+  for (;;) {
+    const match = entryRe.exec(text);
+    if (!match) break;
+
+    const name = match[1];
+    if (name === "entity_buckets" || name === "templates") continue;
+    const block = parseTemplateBlock(text, name, match.index);
+
+    const undoableMatch = block.match(/undoable\s*=\s*(true|false)\s*,/);
+    const entityKindMatch = block.match(/entity_kind\s*=\s*"([^"]+)"\s*,/);
+    if (!undoableMatch || !entityKindMatch) {
+      throw new Error(`${MANIFEST_FORMAT_UNEXPECTED}: missing undoable/entity_kind for ${name}`);
+    }
+
+    const undoable = undoableMatch[1] === "true";
+    if (/undo_flags\s*=\s*[^\n,]+\n\s*\|/.test(block)) {
+      throw new Error(`${MANIFEST_FORMAT_UNEXPECTED}: multi-line undo_flags for ${name}`);
+    }
+    const undoFlagsMatches = [...block.matchAll(/undo_flags\s*=\s*([^\n,]+),/g)];
+    if (undoFlagsMatches.length > 1) {
+      throw new Error(`${MANIFEST_FORMAT_UNEXPECTED}: multiple undo_flags lines for ${name}`);
+    }
+
+    const undoFlags = new Set();
+    if (undoFlagsMatches.length === 1) {
+      const expr = undoFlagsMatches[0][1];
+      for (const token of expr.split("|").map((part) => part.trim())) {
+        const flagName = token.replace(/^undo\./, "");
+        const mapped = UNDO_FLAG_FROM_LUA[flagName];
+        if (!mapped) {
+          throw new Error(
+            `${MANIFEST_FORMAT_UNEXPECTED}: unsupported undo flag '${token}' for ${name}`,
+          );
+        }
+        undoFlags.add(mapped);
+      }
+    }
+
+    found.set(name, {
+      undoable,
+      undo_flags: sorted(undoFlags),
+      entity_kind: entityKindMatch[1],
+    });
+  }
+
+  return found;
+}
+
+export function buildRegistrySnapshot(registry) {
+  const snapshot = new Map();
+  for (const def of registry.rawDefinitions()) {
+    snapshot.set(def.name, {
+      undoable: def.undoable,
+      undo_flags: sorted(def.undo_flags),
+      entity_kind: def.entity_kind,
+    });
+  }
+  return snapshot;
+}
+
+function sameArray(a, b) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export function diffManifestAlignment(tsSnapshot, luaSnapshot) {
+  const errors = [];
+  for (const [name, tsDef] of tsSnapshot.entries()) {
+    const luaDef = luaSnapshot.get(name);
+    if (!luaDef) {
+      errors.push(`MISSING_IN_LUA:${name}`);
+      continue;
+    }
+    for (const field of ["entity_kind", "undoable"]) {
+      if (tsDef[field] !== luaDef[field]) {
+        errors.push(
+          `FIELD_MISMATCH:${name}.${field}: ts=${JSON.stringify(tsDef[field])} lua=${JSON.stringify(luaDef[field])}`,
+        );
+      }
+    }
+    if (!sameArray(tsDef.undo_flags, luaDef.undo_flags)) {
+      errors.push(
+        `FIELD_MISMATCH:${name}.undo_flags: ts=${JSON.stringify(tsDef.undo_flags)} lua=${JSON.stringify(luaDef.undo_flags)}`,
+      );
+    }
+  }
+
+  for (const name of luaSnapshot.keys()) {
+    if (!tsSnapshot.has(name)) {
+      errors.push(`MISSING_IN_TS:${name}`);
+    }
+  }
+  return errors;
+}
+
+export async function buildRealRegistrySnapshot({
+  CapabilityRegistry,
+  registerCoreTemplates,
+}) {
+  const registry = new CapabilityRegistry();
+  registerCoreTemplates(registry);
+  return buildRegistrySnapshot(registry);
+}
+
+async function main() {
+  const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  const [{ CapabilityRegistry }, { registerCoreTemplates }] = await Promise.all([
+    import(pathToFileURL(path.join(repoRoot, "packages/core/dist/registry.js")).href),
+    import(pathToFileURL(path.join(repoRoot, "packages/mcp-server/dist/templates/index.js")).href),
+  ]);
+  const manifestPath = path.join(repoRoot, "reaper/packs/core/manifest.lua");
+  const manifestText = await fs.readFile(manifestPath, "utf8");
+  const luaSnapshot = parseManifestLua(manifestText);
+  const tsSnapshot = await buildRealRegistrySnapshot({
+    CapabilityRegistry,
+    registerCoreTemplates,
+  });
+  const errors = diffManifestAlignment(tsSnapshot, luaSnapshot);
+
+  if (errors.length > 0) {
+    process.stderr.write(`Streetlight manifest alignment failed:\n`);
+    for (const error of errors) process.stderr.write(`- ${error}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`Streetlight manifest alignment ok (${tsSnapshot.size} templates).\n`);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    process.stderr.write(`${e?.stack ?? e}\n`);
+    process.exit(1);
+  });
+}

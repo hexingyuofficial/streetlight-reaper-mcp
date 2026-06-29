@@ -46,7 +46,15 @@ export const itemPitchDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS"],
   idempotent: true, // Setting pitch to N twice yields the same state.
   params: ItemPitchParams,
   result: ItemPitchResult,
+  examples: [
+    {
+      description: "Pitch the first selected item down one octave.",
+      params: { item_id: "selected:0", semitones: -12 },
+    },
+  ],
 };

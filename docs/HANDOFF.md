@@ -1,4 +1,4 @@
-# Handoff — 2026-06-29 (Kernel Slice 02 ✅ live-smoked; track FX read projection commit-ready)
+# Handoff — 2026-06-29 (Kernel Slice 03 ✅ live-smoked; H5 descriptor checks commit-ready)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -7,17 +7,69 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 - Path: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`, git repo on
   branch `main`. Recent checkpoints: `73864f7` beginner installers,
   `7a1e4df` agent workflow + kernel hardening plans, `baa13bd`
-  **Kernel Slice 01** committed and pushed. The current working tree is
-  **Kernel hardening Slice 02** (uncommitted): `get_state(tracks,
-  include:["fx"])`. The user manages versioning out-of-band — do NOT
-  commit, branch, push, or reset without an explicit ask. Read `git
-  log` / `git status` if you need history context; treat the working
-  tree as theirs to commit.
-- `npm test` → **225/225 green** (216 baseline + 8 Slice 02
-  get_state include tests + 1 Lua structure guard). `npm run build` →
-  clean. `git diff --check` clean.
+  **Kernel Slice 01** committed and pushed, `e93d39e`
+  **Kernel Slice 02** committed and pushed. The current working tree is
+  **Kernel hardening Slice 03** (uncommitted): H5 minimum descriptor
+  hardening (`CapabilityDefinition` metadata, TS↔Lua manifest
+  alignment, generated/audited error codes). The user manages
+  versioning out-of-band — do NOT commit, branch, push, or reset
+  without an explicit ask. Read `git log` / `git status` if you need
+  history context; treat the working tree as theirs to commit.
+- `npm test` → **237/237 green**. `npm run build` → clean.
+  `npm run check:manifest` → 11 templates aligned. `npm run
+  check:error-codes-fresh` → 21 codes fresh. `git diff --check`
+  clean.
+- **Kernel hardening Slice 03 ✅ live-smoked / commit-ready
+  (2026-06-29).** Scope from
+  `docs/plans/SLICE_03_ARCHITECT_PLAN.md`:
+  - `packages/core/src/registry.ts` now requires every
+    `CapabilityDefinition` to declare `entity_kind`, symbolic
+    `undo_flags`, and at least one `examples[]` entry. Optional H2/H6
+    placeholders (`expectedDelta`, `reads`, `writes`) exist but are
+    omitted from metadata when absent and are not consumed by runtime
+    code.
+  - All 11 TS template descriptors now carry the new required
+    metadata. `render_region` is the undoable=false edge case:
+    `undo_flags: []`.
+  - `list_templates` automatically returns the enriched metadata via
+    registry metadata; tests lock `entity_kind`, `undo_flags`,
+    `examples`, optional-placeholder omission, and the
+    undoable/undo_flags invariant across all core templates.
+  - New `scripts/manifest-alignment.mjs` parses the existing Lua
+    `manifest.lua` (single-line `undo_flags` convention) and compares
+    TS registry descriptors to Lua for `entity_kind`, `undoable`, and
+    `undo_flags`. It has both a standalone CLI (`npm run
+    check:manifest`) and vitest coverage.
+  - New `scripts/error-codes.mjs` generates
+    `reaper/packs/core/error_codes.lua` from
+    `packages/core/src/errors.ts` and audits Lua error-code literals.
+    The audit catches `code = "FOO"`, direct `raise("FOO", ...)`,
+    fallback forms such as `raise(code or "FOO", ...)`, and resolver
+    returns such as `return nil, "FOO", ...`.
+  - Runtime behavior is intentionally unchanged: no bridge changes, no
+    Lua handler changes, no `manifest.lua` changes, no new tools, and
+    `error_codes.lua` is not dofile'd yet. Handler migration to
+    `errs.FOO` stays deferred.
+  - Focused reviewer pass complete: no findings. Residual risk is the
+    expected one for static regex-based checks (future Lua shape
+    changes may require parser updates).
+  - M0 is complete: tests/build/manifest/error-code/diff checks are
+    green.
+  - M1-M3 live/minimal activity smoke passed on REAPER
+    7.71/macOS-arm64: `ping` returned connected; `list_templates`
+    returned 11 templates and every entry had `entity_kind`,
+    `undo_flags`, and `examples` (`render_region`:
+    `undoable=false`, `undo_flags=[]`, `entity_kind="render"`); old
+    template call `track_create name:"smoke03-meta-1782736628621"`
+    returned the locked envelope with
+    `changed_ids=["guid:{58A3970C-603B-9F43-BC07-7246176D70FD}"]`.
+    That smoke track is left in the open REAPER project for the user
+    to undo/delete.
+- **Kernel hardening Slice 02 ✅ (committed + pushed at `e93d39e`).**
+  See `docs/plans/SLICE_02_ARCHITECT_PLAN.md` for the packet and
+  `docs/PROGRESS.md` for full S0-S10 live-smoke evidence.
 - **Kernel hardening Slice 02 ✅ (2026-06-29; reviewer pass + live
-  smoke complete, uncommitted).** Scope from
+  smoke complete).** Scope from
   `docs/plans/SLICE_02_ARCHITECT_PLAN.md`:
   - TS/MCP: `get_state` now accepts optional `include`, strictly
     `z.array(z.enum(["fx"]))`; non-empty include is valid only with
@@ -299,30 +351,24 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit Slice 02."** Slice 02 has focused reviewer pass +
-       live REAPER smoke green. Current baseline is `npm test`
-       225/225 + `npm run build` clean + `git diff --check` clean.
-       Review `git diff`, then commit only if the user explicitly
-       asks.
+   (a) **"Commit Slice 03."** M0 and M1-M3 are green. Current
+       baseline is `npm test` 237/237 + `npm run build` clean +
+       `npm run check:manifest` green + `npm run
+       check:error-codes-fresh` green + `git diff --check` clean.
+       Commit only if the user explicitly asks.
 
-   (b) **"Re-run Slice 02 smoke."** Fully quit/reopen REAPER for a
-       clean bridge owner, run the launcher, confirm `bridge ready
-       (generation 1)`, then repeat
-       `docs/plans/SLICE_02_ARCHITECT_PLAN.md` § Acceptance Smoke
-       S0-S10. The dirty-bridge-owner failure mode is known: stale
-       pre-Slice-02 bridge loops ignore `include`.
-
-   (c) **"Codex found a bug in Slice 02 or earlier."** Locked
+   (b) **"Codex found a bug in Slice 03 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
        re-test. Never preemptively flip ✅.
 
-   (d) **Pivot to something else.** Abandon these first moves and
+   (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 225/225,
-   `npm run build` clean. The `npm run typecheck` script prints a
+2. **Tests + build baseline this window:** `npm test` 237/237,
+   `npm run build` clean, `npm run check:manifest` green, `npm run
+   check:error-codes-fresh` green. The `npm run typecheck` script prints a
    `TS6310` "may not disable emit" line then exits 0 — pre-existing
    project setup, do not chase. The `[streetlight-mcp] done-sweep:
    readdir failed (EACCES…)` line in test output is the expected

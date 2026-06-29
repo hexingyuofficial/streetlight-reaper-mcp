@@ -59,7 +59,19 @@ export const mediaImportDefinition: CapabilityDefinition<
   risk: "filesystem",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS", "TRACKCFG"],
   idempotent: false,
   params: MediaImportParams,
   result: MediaImportResult,
+  examples: [
+    {
+      description: "Import a readable media file onto a named track.",
+      params: {
+        path: "/System/Library/Sounds/Ping.aiff",
+        track_id: "track:Imports",
+        position: 0,
+      },
+    },
+  ],
 };

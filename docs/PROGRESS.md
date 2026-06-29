@@ -11,27 +11,49 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 02 ✅ live-smoked (2026-06-29), commit-ready.**
-Architect packet lives at
-`docs/plans/SLICE_02_ARCHITECT_PLAN.md`; the source master plans are
+**Kernel hardening Slice 03 ✅ live-smoked / commit-ready
+(2026-06-29).** Architect packet lives at
+`docs/plans/SLICE_03_ARCHITECT_PLAN.md`; the source master plans are
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
-`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 02 adds the first
-H3 projection: `get_state(tracks, include:["fx"])`. Default
-`get_state(tracks)` remains Slice-01-compatible and omits `fx`;
-the opt-in path adds `fx: []` or
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 03 is the H5
+minimum slice: `CapabilityDefinition` now requires
+`entity_kind`, symbolic `undo_flags`, and at least one `examples[]`
+entry per template; optional H2/H6 placeholders
+(`expectedDelta`, `reads`, `writes`) are accepted but omitted when
+absent and not consumed at runtime. All 11 TS template descriptors
+carry the new metadata, and `list_templates` now returns it. New
+static redlines are in place: `scripts/manifest-alignment.mjs`
+checks TS registry descriptors against Lua `manifest.lua` for
+`entity_kind`, `undoable`, and `undo_flags`; `scripts/error-codes.mjs`
+generates `reaper/packs/core/error_codes.lua` from
+`packages/core/src/errors.ts` and audits Lua error-code literals
+including `raise(code or "FOO", ...)` fallback forms and
+`return nil, "FOO", ...` resolver returns. Runtime behavior is
+intentionally unchanged: no bridge changes, no Lua handler changes, no
+`manifest.lua` changes, and `error_codes.lua` is not dofile'd yet.
+M0 is green: `npm test` 237/237, `npm run build` clean, `npm run
+check:manifest` green, `npm run check:error-codes-fresh` green, and
+`git diff --check` clean. M1-M3 live/minimal activity smoke also
+passed on REAPER 7.71/macOS-arm64: `ping` connected,
+`list_templates` returned 11 enriched descriptors, and
+`track_create name:"smoke03-meta-1782736628621"` returned the locked
+call_template envelope.
+
+**Kernel hardening Slice 02 ✅ live-smoked, committed, and pushed
+(2026-06-29, `e93d39e`).** Architect packet lives at
+`docs/plans/SLICE_02_ARCHITECT_PLAN.md`. Slice 02 adds the first H3
+projection: `get_state(tracks, include:["fx"])`. Default
+`get_state(tracks)` remains Slice-01-compatible and omits `fx`; the
+opt-in path adds `fx: []` or
 `{index,name,ident,enabled,preset_name}` descriptors per track. TS
 and Lua both enforce the strict include contract: only `"fx"` is
 valid, non-empty include is valid only with `scope:"tracks"`, and
 `get_state(render, include:["fx"])` returns `PARAMS_INVALID` before
-the reserved-scope `SCOPE_NOT_IMPLEMENTED` path. Code/test baseline:
-`npm test` 225/225 green, `npm run build` clean, `git diff --check`
-clean. Focused reviewer found one P2 (direct-queue `include:{}` was
-accepted as empty array); fixed by requiring the JSON decoder's
-`__streetlight_array` marker in Lua `is_array_like()`. Live REAPER
-smoke S0-S10 passed on REAPER 7.71/macOS-arm64 after a full
-quit/reopen to clear a stale pre-Slice-02 bridge owner. S10 baseline:
-80 ReaEQs on one track fits (`response_bytes=12650`); 650 ReaEQs
-with `limit=1` returns `RESPONSE_TOO_LARGE`.
+the reserved-scope `SCOPE_NOT_IMPLEMENTED` path. Live REAPER smoke
+S0-S10 passed on REAPER 7.71/macOS-arm64 after a full quit/reopen to
+clear a stale pre-Slice-02 bridge owner. S10 baseline: 80 ReaEQs on
+one track fits (`response_bytes=12650`); 650 ReaEQs with `limit=1`
+returns `RESPONSE_TOO_LARGE`.
 
 **Kernel hardening Slice 01 ✅ live-smoked, committed, and pushed
 (2026-06-29, `baa13bd`).** Architect packet lives at
@@ -329,17 +351,82 @@ Smoke evidence:
   exceeds the 65536 byte response cap". Temporary tracks, scratch
   queue files, and `/tmp/streetlight_slice02*` files were cleaned up.
 
+### Kernel hardening Slice 03 (2026-06-29) — descriptor authority + static redlines ✅
+
+Scope: implement the H5 minimum slice from
+`docs/plans/SLICE_03_ARCHITECT_PLAN.md`. This is metadata and tooling
+only: no runtime write behavior changes, no bridge changes, no
+`manifest.lua` changes, and no Lua handler migration to `errs.FOO`
+references.
+
+What changed:
+
+- `packages/core/src/registry.ts` — `CapabilityDefinition` now
+  requires `entity_kind`, symbolic `undo_flags`, and at least one
+  `examples[]` entry. It also defines optional H2/H6 placeholders
+  `expectedDelta`, `reads`, and `writes`; metadata omits these when
+  absent. `register()` performs development-time validation, and
+  `rawDefinitions()` gives static tooling a registry snapshot without
+  executing templates.
+- All 11 `packages/mcp-server/src/templates/*.ts` capability
+  descriptors declare the new metadata. `render_region` is locked as
+  the non-undoable edge case with `undo_flags: []`.
+- `packages/mcp-server/src/tools/__tests__/list-templates.test.ts`
+  and `packages/core/src/__tests__/registry.test.ts` now lock the new
+  metadata surface, optional-placeholder omission, example presence,
+  and undoable/undo_flags invariants.
+- `scripts/manifest-alignment.mjs` — parses Lua `manifest.lua` and
+  compares it to the TS registry for `entity_kind`, `undoable`, and
+  `undo_flags`. It supports the locked single-line `undo_flags`
+  convention and fails loudly on unsupported multi-line forms. Exposed
+  through `npm run check:manifest` and vitest.
+- `scripts/error-codes.mjs` — generates
+  `reaper/packs/core/error_codes.lua` from
+  `packages/core/src/errors.ts`, checks the committed generated file
+  is fresh, and audits Lua error-code literals. The audit covers
+  `code = "FOO"`, `raise("FOO", ...)`, fallback forms such as
+  `raise(code or "FOO", ...)`, and resolver returns such as
+  `return nil, "FOO", ...`.
+- `docs/RESPONSE_BUDGET.md` — `list_templates` metadata budget notes
+  now include the new descriptor fields and explicitly mark
+  `expectedDelta` / `reads` / `writes` as placeholders.
+- `docs/ROADMAP.md` — H5 minimum slice noted; full handler-side
+  error-code migration and generated factories remain deferred.
+
+Verification so far (M0):
+
+- `npm test` → 237/237 green.
+- `npm run build` → clean.
+- `npm run check:manifest` → `Streetlight manifest alignment ok (11 templates).`
+- `npm run check:error-codes-fresh` → `Streetlight error codes fresh (21 codes).`
+- `git diff --check` → clean.
+- Focused reviewer pass → no findings. Residual risk is limited to
+  the expected static-regex-check boundary; future Lua shape changes
+  may need parser/audit updates.
+
+Live/minimal activity smoke:
+
+- M1: `ping` returned connected on REAPER 7.71/macOS-arm64.
+- M2: `list_templates` returned 11 templates and every metadata
+  entry includes `entity_kind`, `undo_flags`, and `examples`.
+  `render_region.undoable=false` and `undo_flags=[]`.
+- M3: `track_create name:"smoke03-meta-1782736628621"` returned
+  `ok:true` with locked envelope `{ template:"track_create",
+  changed_count:1, changed_ids:["guid:{58A3970C-603B-9F43-BC07-7246176D70FD}"],
+  truncated:false }`. The smoke track is left in the open REAPER
+  project for undo/delete.
+
 
 
 ### v0.1 progress at a glance
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅ | none (v0.1 release-polish complete; release-prep setup/launcher landed; second-Mac smoke is the open gate) |
-| Tests | 225/225 green | Slice 02 commit pending |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-03 ✅ | Slice 03 commit/push |
+| Tests | 237/237 green | none |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 02 is now
-commit-ready.** Step 6 (render) closed
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 03 is now the live
+edge.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
 discovery + end-to-end demo) shipped 2026-06-29 in the same window:
@@ -374,18 +461,19 @@ gate passed live on this Mac (console: `bridge ready (generation
 1) — templates: …`). Test bar 171 → 198 (+27 pure-function setup
 tests). The second-Mac smoke per `docs/CROSS_MAC_SMOKE.md` is the
 remaining gate before any release tag. Kernel Slice 01 was committed
-and pushed at `baa13bd`; Slice 02 is an uncommitted, reviewer-checked,
-live-smoked code-drop adding track-level FX read projection behind
-`get_state(tracks, include:["fx"])`.
+and pushed at `baa13bd`; Slice 02 was committed and pushed at
+`e93d39e`; Slice 03 is the current uncommitted, live-smoked code-drop
+adding H5 descriptor authority, manifest alignment, and error-code
+generation.
 
 ### Next action
 
-1. **Commit Kernel Slice 02 when the user asks.** Focused reviewer
-   pass is complete, live REAPER S0-S10 is green, `npm test` is
-   225/225 green, `npm run build` is clean, and `git diff --check` is
-   clean.
+1. **Commit Kernel Slice 03 when the user asks.** M0 and M1-M3 are
+   green. Current baseline: `npm test` 237/237, build clean,
+   `check:manifest` green, `check:error-codes-fresh` green,
+   `git diff --check` clean.
 2. **Second-Mac smoke / v0.1 release tag remains available after
-   Slice 02 closes.** Setup/launcher reproducer is ready;
+   Slice 03 closes.** Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 
 
@@ -3004,8 +3092,10 @@ list has no owner.
 cd /path/to/streetlight-reaper-mcp
 npm install
 npm run typecheck   # both packages
-npm test            # 216 tests, all passing
+npm test            # 237 tests, all passing
 npm run build       # writes dist/ in both packages
+npm run check:manifest
+npm run check:error-codes-fresh
 ```
 
 ## Where Things Live
@@ -3044,11 +3134,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 02 is commit-ready.** Read
-   `docs/plans/SLICE_02_ARCHITECT_PLAN.md` before touching code. The
-   code-drop currently has 225/225 tests + clean build + clean
-   `git diff --check`; focused reviewer pass and live REAPER S0-S10
-   smoke are green. Do not commit unless the user explicitly asks.
+2. **Kernel hardening Slice 03 is commit-ready.** Read
+   `docs/plans/SLICE_03_ARCHITECT_PLAN.md` before touching code. M0
+   is green (`npm test` 237/237, build clean, `check:manifest` green,
+   `check:error-codes-fresh` green, `git diff --check` clean), and
+   M1-M3 live/minimal activity smoke passed on REAPER
+   7.71/macOS-arm64. Do not commit unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

@@ -53,7 +53,15 @@ export const itemMoveDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS"],
   idempotent: true,
   params: ItemMoveParams,
   result: ItemMoveResult,
+  examples: [
+    {
+      description: "Move the first selected item to 1.5 seconds.",
+      params: { item_id: "selected:0", position: 1.5 },
+    },
+  ],
 };

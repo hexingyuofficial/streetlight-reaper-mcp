@@ -59,7 +59,15 @@ export const itemFadeDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS"],
   idempotent: true,
   params: ItemFadeParams,
   result: ItemFadeResult,
+  examples: [
+    {
+      description: "Give the first selected item a short fade in and out.",
+      params: { item_id: "selected:0", fade_in: 0.02, fade_out: 0.08 },
+    },
+  ],
 };

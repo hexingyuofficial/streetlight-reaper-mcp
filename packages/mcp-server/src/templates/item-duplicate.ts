@@ -56,8 +56,16 @@ export const itemDuplicateDefinition: CapabilityDefinition<
   risk: "write_safe",
   mutates: true,
   undoable: true,
+  entity_kind: "item",
+  undo_flags: ["ITEMS"],
   // Each call adds a new item; running twice produces two duplicates.
   idempotent: false,
   params: ItemDuplicateParams,
   result: ItemDuplicateResult,
+  examples: [
+    {
+      description: "Duplicate the first selected item onto a named track.",
+      params: { item_id: "selected:0", track_id: "track:Variations", position: 2 },
+    },
+  ],
 };

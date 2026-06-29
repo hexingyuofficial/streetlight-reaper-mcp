@@ -10,6 +10,8 @@ function makeItemPitch(reg: CapabilityRegistry): void {
     risk: "write_safe",
     mutates: true,
     undoable: true,
+    entity_kind: "item",
+    undo_flags: ["ITEMS"],
     idempotent: false,
     params: z.object({
       item_id: z.string(),
@@ -24,6 +26,11 @@ function makeItemPitch(reg: CapabilityRegistry): void {
         }),
       ),
     }),
+    examples: [
+      {
+        params: { item_id: "selected:0", semitones: -3 },
+      },
+    ],
   });
 }
 
@@ -35,6 +42,8 @@ function makeTrackCreate(reg: CapabilityRegistry): void {
     risk: "write_safe",
     mutates: true,
     undoable: true,
+    entity_kind: "track",
+    undo_flags: ["TRACKCFG"],
     idempotent: false,
     params: z.object({
       name: z.string(),
@@ -43,6 +52,11 @@ function makeTrackCreate(reg: CapabilityRegistry): void {
     result: z.object({
       track: z.object({ id: z.string(), name: z.string() }),
     }),
+    examples: [
+      {
+        params: { name: "FX", reuse_existing: true },
+      },
+    ],
   });
 }
 
@@ -65,6 +79,11 @@ describe("CapabilityRegistry", () => {
     expect(itemPitch).toBeDefined();
     expect(itemPitch?.risk).toBe("write_safe");
     expect(itemPitch?.mutates).toBe(true);
+    expect(itemPitch?.entity_kind).toBe("item");
+    expect(itemPitch?.undo_flags).toEqual(["ITEMS"]);
+    expect(itemPitch?.examples).toEqual([
+      { params: { item_id: "selected:0", semitones: -3 } },
+    ]);
     expect(itemPitch?.params_schema).toBeDefined();
     expect(itemPitch?.result_schema).toBeDefined();
   });
@@ -104,5 +123,54 @@ describe("CapabilityRegistry", () => {
     const list = reg.list();
     // Round-trip through JSON to prove there are no functions or symbols.
     expect(() => JSON.parse(JSON.stringify(list))).not.toThrow();
+  });
+
+  it("rejects capabilities missing required descriptor metadata", () => {
+    const reg = new CapabilityRegistry();
+    const base = {
+      name: "bad_template",
+      description: "bad",
+      pack: "test",
+      risk: "read" as const,
+      mutates: false,
+      undoable: false,
+      idempotent: true,
+      params: z.object({}),
+      result: z.object({}),
+    };
+
+    expect(() => reg.register({ ...base } as never)).toThrow(/entity_kind/);
+    expect(() =>
+      reg.register({ ...base, entity_kind: "item" } as never),
+    ).toThrow(/undo_flags/);
+    expect(() =>
+      reg.register({ ...base, entity_kind: "item", undo_flags: [] } as never),
+    ).toThrow(/example/);
+  });
+
+  it("rejects inconsistent undo metadata", () => {
+    const reg = new CapabilityRegistry();
+    const base = {
+      name: "bad_undo",
+      description: "bad",
+      pack: "test",
+      risk: "read" as const,
+      mutates: false,
+      idempotent: true,
+      entity_kind: "item",
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    };
+
+    expect(() =>
+      reg.register({ ...base, undoable: true, undo_flags: [] }),
+    ).toThrow(/undoable but has no undo_flags/);
+    expect(() =>
+      reg.register({ ...base, undoable: false, undo_flags: ["ITEMS"] }),
+    ).toThrow(/not undoable but has undo_flags/);
+    expect(() =>
+      reg.register({ ...base, undoable: true, undo_flags: ["NOPE"] as never }),
+    ).toThrow(/unknown undo flag/);
   });
 });
