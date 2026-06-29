@@ -133,6 +133,12 @@ the `optional:true` skip rule in `verify.lua`. It also changes the
 `check_fields` path, so live smoke again requires full quit/reopen
 REAPER before loading `start_bridge.lua`.
 
+2026-06-30 note: Slice 08 implements `item_fade` field postchecks and
+the `nullable:true` null-coerce rule in `verify.lua`. `check_fields`
+now receives the bridge handler `ctx` so it can compare against the
+same `ctx.json.null` sentinel as the handler; live smoke again requires
+full quit/reopen REAPER before loading `start_bridge.lua`.
+
 ### 细化点（这步设计难点都在这里）
 - **不要做任意字段的全量 before/after diff**——太贵且 before 不可知（handler 内部才解析
   出受影响实体）。校验只覆盖两类**可知后置条件**：

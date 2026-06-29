@@ -18,6 +18,7 @@ export interface FieldCheckDescriptor {
   paramPath: string;
   tolerance?: number;
   optional?: boolean;
+  nullable?: boolean;
 }
 
 export interface ExpectedDelta {
@@ -235,7 +236,8 @@ function validateExpectedDeltaFields(
   }
 
   const seen = new Set<string>();
-  let requiredCount = 0;
+  let optionalCount = 0;
+  let nullableCount = 0;
   for (const [i, field] of fields.entries()) {
     if (!field || typeof field !== "object") {
       throw new Error(
@@ -275,7 +277,13 @@ function validateExpectedDeltaFields(
         `Capability ${name} expectedDelta.fields[${i}] optional must be boolean when present`,
       );
     }
-    if (field.optional !== true) requiredCount += 1;
+    if (field.nullable !== undefined && typeof field.nullable !== "boolean") {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields[${i}] nullable must be boolean when present`,
+      );
+    }
+    if (field.optional === true) optionalCount += 1;
+    if (field.nullable === true) nullableCount += 1;
 
     const key = `${field.scope}:${field.field}`;
     if (seen.has(key)) {
@@ -285,9 +293,9 @@ function validateExpectedDeltaFields(
     }
     seen.add(key);
   }
-  if (requiredCount === 0) {
+  if (optionalCount === fields.length && nullableCount !== fields.length) {
     throw new Error(
-      `Capability ${name} expectedDelta.fields must include at least one required field`,
+      `Capability ${name} expectedDelta.fields may be all-optional only when every field is nullable`,
     );
   }
 }

@@ -1,7 +1,8 @@
 -- verify.lua — structural before/after checks for mutating templates.
 --
 -- Slice 04 verified entity-count deltas. Slice 06 adds a deliberately small
--- field-level readback for four in-place templates.
+-- field-level readback for four in-place templates. Slice 08 lets nullable
+-- field descriptors coerce explicit json.null params to expected value 0.
 
 local M = {}
 
@@ -164,7 +165,7 @@ local function mismatch(field, expected, actual, tolerance)
   }
 end
 
-function M.check_fields(expected, changed_ids, params, entity_kind)
+function M.check_fields(expected, changed_ids, params, entity_kind, ctx)
   if type(expected) ~= "table" or type(expected.fields) ~= "table" then
     return nil
   end
@@ -203,11 +204,26 @@ function M.check_fields(expected, changed_ids, params, entity_kind)
         failures[#failures + 1] = mismatch(field, "existing " .. entity_kind, "not found", nil)
       else
         local key = param_path(field)
-        local expected_value = type(params) == "table" and params[key] or nil
-        if expected_value == nil and field.optional == true then
+        local raw_value = type(params) == "table" and params[key] or nil
+        local expected_value = raw_value
+        local should_read = true
+        if raw_value == nil and field.optional == true then
           -- The descriptor says "verify this only when the caller supplied
           -- the param". Used by item_trim.start_offset in Slice 07.
-        else
+          should_read = false
+        elseif raw_value == nil then
+          failures[#failures + 1] = mismatch(field, "present param", nil, field.tolerance)
+          should_read = false
+        elseif ctx and ctx.json and raw_value == ctx.json.null then
+          if field.nullable == true then
+            expected_value = 0
+          else
+            failures[#failures + 1] = mismatch(field, "non-null param", "json.null", field.tolerance)
+            should_read = false
+          end
+        end
+
+        if should_read then
           local ok_read, actual_value, read_err = reader.read(handle, field.field)
           local tolerance = field.tolerance
           if not ok_read then

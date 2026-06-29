@@ -11,31 +11,45 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 07 ✅ live-smoked / commit-ready
+**Kernel hardening Slice 08 ✅ live-smoked
 (2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_08_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 08 continues H2
+field-level verification by adding `item_fade`, the first nullable
+field-verify template. `FieldCheckDescriptor` now supports
+`nullable?: boolean`; validation rejects non-boolean `nullable` values
+and allows an all-optional `fields[]` list only when every field is also
+nullable. `item_fade` declares item `D_FADEINLEN ← params.fade_in` and
+item `D_FADEOUTLEN ← params.fade_out`, both `optional:true` and
+`nullable:true`. The bridge wire carries `nullable:true`, and
+`verify.lua` coerces explicit `ctx.json.null` to expected value `0`
+only when the descriptor is nullable. Decisions locked by user:
+D1=a only `item_fade`; D2=a null coerces to `0`; D3=a `nullable`
+naming everywhere; D4=a all-optional legal iff all-nullable; D5=a
+fade tolerance `1e-6`. Focused static checks are green; full baseline,
+and static gates are green: `npm test` 263/263, `npm run build` clean,
+`npm run check:manifest` green, `npm run check:error-codes-fresh`
+green, and `git diff --check` clean. Reviewer pass completed, and
+REAPER live smoke passed on REAPER 7.71/macOS-arm64 after full
+quit/reopen and current `start_bridge.lua` run. Console showed
+generation 1 and `loaded error_codes (22 codes)`.
+
+**Kernel hardening Slice 07 ✅ live-smoked, committed, and pushed
+(2026-06-30, `9244be3`).** Architect packet lives at
 `docs/plans/SLICE_07_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 07 continues H2
 field-level verification by adding `item_trim`, the first covered
 template with multiple fields and mixed scopes. `FieldCheckDescriptor`
-now supports `optional?: boolean`; validation rejects non-boolean
-`optional` values and rejects all-optional field lists. `item_trim`
-declares `D_LENGTH ← params.length` and optional
-`D_STARTOFFS ← params.start_offset`. The bridge wire carries
-`optional:true`, and `verify.lua` skips a field only when the param is
-absent and the descriptor is optional. Decisions locked by user:
-D1=a only `item_trim`; D2=a optional absent means skip/ok; D3=a
-`optional` naming everywhere; D4=a `D_STARTOFFS` tolerance `1e-6`;
-D5=a all-optional fields rejected. Full static baseline is green:
-`npm test` 257/257, `npm run build` clean, `npm run check:manifest`
-green, `npm run check:error-codes-fresh` green, and `git diff
---check` clean. Reviewer pass completed after two P3 doc-only nits
-were fixed. REAPER live smoke passed on REAPER 7.71/macOS-arm64 after
-a full quit/reopen and current bridge reload: length-only `item_trim`
-verified `D_LENGTH` and skipped absent optional `D_STARTOFFS`;
-length + `start_offset` verified both item and take scopes; mismatch,
-LAST_RESULT, error-code, get_state, and render_region regressions all
-passed. Slice 07 is uncommitted; commit/push only on explicit user ask.
+supports `optional?: boolean`; validation rejects non-boolean
+`optional` values and rejects all-optional field lists. Full static
+baseline was green: `npm test` 257/257, `npm run build` clean,
+`npm run check:manifest` green, `npm run check:error-codes-fresh`
+green, and `git diff --check` clean. Reviewer pass completed after two
+P3 doc-only nits were fixed. REAPER live smoke passed on
+REAPER 7.71/macOS-arm64 after a full quit/reopen and current bridge
+reload.
 
 **Kernel hardening Slice 06 ✅ live-smoked, committed, and pushed
 (2026-06-30, `9f56ce0`).** Architect packet lives at
@@ -609,6 +623,111 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
+### Kernel hardening Slice 08 (2026-06-30) — item_fade nullable field verification ✅ live-smoked
+
+Scope: extend the Slice 06/07 field-verification infrastructure to
+`item_fade` and introduce nullable field descriptors for explicit JSON
+`null` params that intentionally clear a REAPER field to zero.
+
+What changed:
+
+- `docs/plans/SLICE_08_ARCHITECT_PLAN.md` — Architect packet copied
+  into the repo for future windows.
+- `packages/core/src/registry.ts` — `FieldCheckDescriptor` adds
+  `nullable?: boolean`. Validation rejects non-boolean `nullable` and
+  revises the Slice 07 all-optional guard: all-optional `fields[]` is
+  legal only when every field is also `nullable:true`.
+- `packages/mcp-server/src/templates/item-fade.ts` — `item_fade` now
+  declares two field checks: item `D_FADEINLEN` from `params.fade_in`,
+  and item `D_FADEOUTLEN` from `params.fade_out`. Both fields are
+  `optional:true`, `nullable:true`, and use tolerance `1e-6`.
+- `packages/mcp-server/src/tools/call-template.ts` — wire mapping now
+  includes `nullable` when present. The success envelope remains the
+  locked `{template, changed_count, changed_ids, truncated}` shape.
+- `scripts/manifest-alignment.mjs` — static descriptor checks now
+  enforce boolean `nullable` and mirror the all-optional/all-nullable
+  rule.
+- `reaper/packs/core/verify.lua` — `check_fields()` now accepts bridge
+  handler `ctx`, still skips absent optional params, and coerces
+  explicit `ctx.json.null` to expected value `0` only when the field has
+  `nullable:true`. Explicit `json.null` without `nullable:true` becomes
+  a field mismatch.
+- `reaper/streetlight_bridge.lua` — passes the same handler `ctx` into
+  `verify.check_fields()` so verify compares against the exact
+  `ctx.json.null` sentinel used by handlers. This avoids dofile'ing a
+  second JSON module and splitting sentinel identity.
+
+Decisions locked by user:
+
+- D1=a: only `item_fade` in Slice 08.
+- D2=a: `nullable:true` + explicit `json.null` means expected value `0`.
+- D3=a: TS / wire / Lua all use the name `nullable`.
+- D4=a: all-optional `fields[]` is legal iff every field is nullable.
+- D5=a: `D_FADEINLEN` / `D_FADEOUTLEN` tolerance `1e-6`.
+
+Verification so far:
+
+- Focused registry/build tests passed.
+- Focused call-template/list-templates wire tests passed.
+- Focused manifest-alignment/check:manifest passed.
+- Focused lua-structure/check:error-codes-fresh passed.
+- Full static baseline passed: `npm run build`, `npm test` (263/263),
+  `npm run check:manifest`, `npm run check:error-codes-fresh`, and
+  `git diff --check`. Reviewer pass completed with no P1/P2; two P3
+  doc-only status nits were fixed.
+- REAPER live smoke passed on REAPER 7.71/macOS-arm64 after the user
+  fully quit/reopened REAPER and ran the current launcher. Console
+  showed `bridge starting (generation 1)`, `loaded error_codes
+  (22 codes)`, and `bridge ready (generation 1) — loaded error_codes
+  (22 codes)`.
+
+Live smoke:
+
+- `ping` returned `{bridge:"connected", reaper_version:"7.71/macOS-arm64"}`.
+- `list_templates` returned 11 templates and showed
+  `item_fade.expectedDelta.fields` with item `D_FADEINLEN ← fade_in`
+  and item `D_FADEOUTLEN ← fade_out`, both `optional:true` and
+  `nullable:true`. `item_trim` stayed Slice 07-shaped:
+  `D_STARTOFFS optional:true` with no `nullable`.
+- Happy paths passed: `item_fade fade_in:0.25` verified
+  `D_FADEINLEN` and skipped absent `fade_out`;
+  `fade_in:0.1 fade_out:0.5` verified both fields;
+  `fade_in:null` verified `D_FADEINLEN` as `0` and skipped absent
+  `fade_out`; `fade_in:null fade_out:null` verified both fields as
+  `0`.
+- Regressions passed: Slice 07 `item_trim` length-only still
+  succeeded with absent `start_offset` skipped; Slice 06 `item_pitch`
+  and `item_move` happy paths passed; `item_fade selected:99`
+  returned `ITEM_NOT_FOUND`; `region_create name:"bad/name"`
+  returned `REGION_NAME_INVALID`.
+- Raw verifier paths passed: bad field
+  `D_FADEINLEN_BAD` returned `VERIFY_FAILED`, `recoverable:false`,
+  with `details.fields[]`; a following `item_move
+  last_result:item:0` still hit the pre-failure item, proving
+  `LAST_RESULT` was not polluted. Raw `fade_in:null` without
+  `nullable:true` returned `VERIFY_FAILED` with `json.null` in field
+  details. Raw absent `fade_in` / `fade_out` with optional fields
+  succeeded. Raw structural mismatch (`count:2`) failed before field
+  verification and omitted top-level `details.fields`.
+- get_state include regression passed (`tracks include:["fx"]`
+  returned track descriptors with `fx:[]`; include outside tracks
+  returned `PARAMS_INVALID`), and `render_region` carve-out passed:
+  changed id was only the absolute WAV path and no sidecars remained.
+
+Live-smoke evidence:
+
+- Queue: `/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
+- Smoke track: `guid:{44E9538D-5AD6-9F45-8F0F-058785455975}`.
+- Smoke items:
+  `guid:{336D3720-C74E-B44E-BC94-5D907602A734}` and
+  `guid:{CA7165CD-B62E-E442-890E-44474DBB3D45}`.
+- Render artifact:
+  `/tmp/streetlight_slice08_live_smoke/renders/slice08_render_1782758242169.wav`
+  (`file`: RIFF/WAVE Microsoft PCM, 24 bit, stereo, 48000 Hz), with
+  no `.RPP` or `.RPP-bak` sidecars.
+- Full machine-readable evidence:
+  `/tmp/streetlight_slice08_live_smoke/evidence.json`.
+
 ### Kernel hardening Slice 07 (2026-06-30) — item_trim optional field verification ✅ live-smoked
 
 Scope: extend the Slice 06 field-verification infrastructure to
@@ -870,10 +989,10 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-07 ✅ | Slice 07 commit/push if user asks |
-| Tests | Slice 07: 257/257 green; Slice 07 REAPER smoke ✅ | none for Slice 07 |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-08 ✅ | Slice 08 commit/push if user asks |
+| Tests | Slice 08: 263/263 green; REAPER live smoke ✅; Slice 07 pushed at `9244be3` | none for Slice 08 |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 07 is now
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 08 is now
 live-smoked and commit-ready.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
@@ -912,15 +1031,16 @@ remaining gate before any release tag. Kernel Slice 01 was committed
 and pushed at `baa13bd`; Slice 02 was committed and pushed at
 `e93d39e`; Slice 03 was committed and pushed at `4e80839`; Slice 04
 was committed and pushed at `d3f8fe7`; Slice 05 was committed and
-pushed at `5ba6318`; Slice 06 was committed and pushed at `9f56ce0`.
-Slice 07 is the current uncommitted H2 item_trim optional-field verification slice,
+pushed at `5ba6318`; Slice 06 was committed and pushed at `9f56ce0`;
+Slice 07 was committed and pushed at `9244be3`. Slice 08 is the
+current uncommitted H2 item_fade nullable-field verification slice,
 with static baseline, reviewer pass, and REAPER live smoke complete.
 
 ### Next action
 
-1. **Commit/push Slice 07 only if the user explicitly asks.**
+1. **Commit/push Slice 08 only if the user explicitly asks.**
    Static baseline, reviewer pass, and REAPER live smoke are green.
-2. **Start the next architect slice only after Slice 07 is either committed
+2. **Start the next architect slice only after Slice 08 is either committed
    or the user explicitly chooses to continue with it uncommitted.**
 3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
@@ -3584,12 +3704,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 07 is live-smoked and commit-ready.** Read
-   `docs/plans/SLICE_07_ARCHITECT_PLAN.md` before touching code.
-   Static baseline is green (`npm test` 257/257, build,
+2. **Kernel hardening Slice 08 is live-smoked and commit-ready.** Read
+   `docs/plans/SLICE_08_ARCHITECT_PLAN.md` before touching code.
+   Static baseline is green (`npm test` 263/263, build,
    `check:manifest`, `check:error-codes-fresh`, `git diff --check`);
-   reviewer pass is complete; REAPER 7.71/macOS-arm64 smoke passed.
-   Do not commit unless the user explicitly asks.
+   reviewer pass and REAPER 7.71/macOS-arm64 smoke are complete. Do
+   not commit unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

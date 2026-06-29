@@ -62,7 +62,27 @@ export const itemFadeDefinition: CapabilityDefinition<
   entity_kind: "item",
   undo_flags: ["ITEMS"],
   idempotent: true,
-  expectedDelta: { count: 1 },
+  expectedDelta: {
+    count: 1,
+    fields: [
+      {
+        scope: "item",
+        field: "D_FADEINLEN",
+        paramPath: "fade_in",
+        tolerance: 1e-6,
+        optional: true,
+        nullable: true,
+      },
+      {
+        scope: "item",
+        field: "D_FADEOUTLEN",
+        paramPath: "fade_out",
+        tolerance: 1e-6,
+        optional: true,
+        nullable: true,
+      },
+    ],
+  },
   params: ItemFadeParams,
   result: ItemFadeResult,
   examples: [

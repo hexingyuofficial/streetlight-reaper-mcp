@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 07 ✅ live-smoked; item_trim optional field verification commit-ready)
+# Handoff — 2026-06-30 (Kernel Slice 08 ✅ live-smoked; item_fade nullable field verification)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -8,20 +8,78 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   branch `main`. Recent pushed checkpoints: `baa13bd` Kernel Slice
   01, `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03,
   `d3f8fe7` Kernel Slice 04, `5ba6318` Kernel Slice 05, and
-  `9f56ce0` Kernel Slice 06. The current working tree is **Kernel
-  hardening Slice 07** (uncommitted, live-smoked, commit-ready): H2
-  field-level verification now covers `item_trim` and introduces
-  `optional:true` descriptors. The user manages versioning
+  `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07. The current
+  working tree is **Kernel hardening Slice 08** (uncommitted,
+  live-smoked): H2 field-level verification now covers
+  `item_fade` and introduces `nullable:true` descriptors. The user
+  manages versioning
   out-of-band — do NOT commit, branch, push, or reset without an
   explicit ask.
-- Slice 07 static baseline: `npm test` → **257/257 green**,
+- Slice 08 static baseline: `npm test` → **263/263 green**,
   `npm run build` → clean, `npm run check:manifest` → 11 templates
   aligned, `npm run check:error-codes-fresh` → 22 codes fresh, and
-  `git diff --check` → clean. Reviewer pass completed after two P3
-  doc-only nits were fixed. REAPER live smoke passed on
-  REAPER 7.71/macOS-arm64.
-- **Kernel hardening Slice 07 ✅ live-smoked
+  `git diff --check` → clean. Reviewer pass completed; REAPER live
+  smoke passed on REAPER 7.71/macOS-arm64.
+- **Kernel hardening Slice 08 ✅ live-smoked
   (2026-06-30).** Scope from
+  `docs/plans/SLICE_08_ARCHITECT_PLAN.md`:
+  - `FieldCheckDescriptor` now has optional `nullable?: boolean`.
+    Registry and manifest alignment require it to be boolean when
+    present and allow an all-optional `fields[]` list only when every
+    field is also `nullable:true`.
+  - `item_fade` now declares two field checks: item `D_FADEINLEN` from
+    `params.fade_in`, and item `D_FADEOUTLEN` from `params.fade_out`.
+    Both are `optional:true` and `nullable:true`.
+  - `call_template` passes `nullable` through the wire descriptor while
+    keeping the locked success envelope unchanged.
+  - `verify.lua` still skips fields when `optional:true` and the param
+    is absent. New Slice 08 behavior: when a param is explicit
+    `ctx.json.null` and the descriptor has `nullable:true`, field verify
+    coerces expected value to `0` before the normal readback compare.
+    Explicit `json.null` without `nullable:true` becomes a field
+    mismatch. `verify.check_fields()` now receives bridge handler `ctx`
+    from `streetlight_bridge.lua` so it compares against the same
+    `ctx.json.null` sentinel as the handler; it does not dofile/require a
+    second JSON module.
+  - Decisions locked by user: D1=a only `item_fade`; D2=a hardcode
+    nullable null-coerce to `0`; D3=a name is `nullable` everywhere;
+    D4=a all-optional fields are legal iff all-nullable; D5=a fade field
+    tolerance `1e-6`.
+  - Live smoke passed after full REAPER quit/reopen and current
+    `start_bridge.lua` run. Console evidence: `bridge starting
+    (generation 1)`, `loaded error_codes (22 codes)`, and `bridge
+    ready (generation 1) — loaded error_codes (22 codes)`. `ping`
+    returned `connected` on REAPER `7.71/macOS-arm64`.
+  - `list_templates` showed `item_fade.expectedDelta.fields[2]`:
+    item `D_FADEINLEN` from `fade_in` and item `D_FADEOUTLEN` from
+    `fade_out`, both `optional:true` / `nullable:true`. `item_trim`
+    stayed Slice 07-shaped: `D_STARTOFFS optional:true` and no
+    `nullable`.
+  - Happy nullable paths passed: `fade_in:0.25` verified fade-in and
+    skipped absent fade-out; `fade_in:0.1 fade_out:0.5` verified both;
+    `fade_in:null` verified `D_FADEINLEN` as `0` and skipped
+    fade-out; `fade_in:null fade_out:null` verified both as `0`.
+  - Regression/error paths passed: Slice 07 `item_trim` length-only;
+    Slice 06 `item_pitch` and `item_move`; raw bad field returned
+    `VERIFY_FAILED`, `recoverable:false`, with `details.fields[]` and
+    did not pollute `LAST_RESULT`; raw `json.null` without
+    `nullable:true` returned `VERIFY_FAILED`; raw all-optional absent
+    fade params succeeded; raw structural mismatch still won before
+    field verify and omitted `details.fields`; `item_fade selected:99`
+    returned `ITEM_NOT_FOUND`; `region_create name:"bad/name"`
+    returned `REGION_NAME_INVALID`; get_state include regressions and
+    `render_region` artifact carve-out passed.
+  - Evidence: queue
+    `/Users/Zhuanz/Library/Application Support/Streetlight/queue`;
+    smoke track `guid:{44E9538D-5AD6-9F45-8F0F-058785455975}`;
+    items `guid:{336D3720-C74E-B44E-BC94-5D907602A734}` and
+    `guid:{CA7165CD-B62E-E442-890E-44474DBB3D45}`; render artifact
+    `/tmp/streetlight_slice08_live_smoke/renders/slice08_render_1782758242169.wav`
+    verified as 24-bit PCM stereo 48 kHz with no `.RPP` /
+    `.RPP-bak` sidecars. Full machine-readable evidence is at
+    `/tmp/streetlight_slice08_live_smoke/evidence.json`.
+- **Kernel hardening Slice 07 ✅ live-smoked
+  / committed and pushed (2026-06-30, `9244be3`).** Scope from
   `docs/plans/SLICE_07_ARCHITECT_PLAN.md`:
   - `FieldCheckDescriptor` now has optional `optional?: boolean`.
     Registry and manifest alignment require it to be boolean when
@@ -575,12 +633,12 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit/push Slice 07."** Static baseline, reviewer pass, and
+   (a) **"Commit/push Slice 08."** Static baseline, reviewer pass, and
        REAPER live smoke are green. Re-run `git diff --check` and a
        quick baseline if desired, then commit/push only if the user
        explicitly asks.
 
-   (b) **"Codex found a bug in Slice 07 or earlier."** Locked
+   (b) **"Codex found a bug in Slice 08 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -589,7 +647,7 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 257/257,
+2. **Tests + build baseline this window:** `npm test` 263/263,
    `npm run build` clean, `npm run check:manifest` green,
    `npm run check:error-codes-fresh` green, `git diff --check`
    clean. The `npm run typecheck` script prints a

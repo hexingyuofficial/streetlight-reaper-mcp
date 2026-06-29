@@ -137,6 +137,9 @@ function toWireExpectedDelta(
             ...(field.optional !== undefined
               ? { optional: field.optional }
               : {}),
+            ...(field.nullable !== undefined
+              ? { nullable: field.nullable }
+              : {}),
           })),
         }
       : {}),

@@ -194,6 +194,7 @@ return { templates = {
               { scope: "take", field: "D_PITCH", paramPath: "semitones" },
               { scope: "fx", field: "", paramPath: "" },
               { scope: "item", field: "D_LENGTH", paramPath: "length", optional: "yes" },
+              { scope: "item", field: "D_FADEINLEN", paramPath: "fade_in", nullable: "yes" },
             ],
           },
         },
@@ -226,9 +227,51 @@ return { templates = {
     expect(errors).toContain(
       "EXPECTED_DELTA_INVALID:item_pitch: fields[3] optional must be boolean",
     );
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields[4] nullable must be boolean",
+    );
   });
 
-  it("reports expectedDelta fields when every field is optional", () => {
+  it("allows all-optional expectedDelta fields when every field is nullable", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 1,
+            fields: [
+              {
+                scope: "item",
+                field: "D_FADEINLEN",
+                paramPath: "fade_in",
+                optional: true,
+                nullable: true,
+              },
+              {
+                scope: "item",
+                field: "D_FADEOUTLEN",
+                paramPath: "fade_out",
+                optional: true,
+                nullable: true,
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors).not.toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields may be all-optional only when every field is nullable",
+    );
+  });
+
+  it("reports expectedDelta fields when every field is optional but not nullable", () => {
     const ts = new Map([
       [
         "item_pitch",
@@ -250,7 +293,7 @@ return { templates = {
     const errors = diffManifestAlignment(ts, lua);
 
     expect(errors).toContain(
-      "EXPECTED_DELTA_INVALID:item_pitch: fields must include at least one required field",
+      "EXPECTED_DELTA_INVALID:item_pitch: fields may be all-optional only when every field is nullable",
     );
   });
 

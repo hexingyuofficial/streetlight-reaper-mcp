@@ -305,6 +305,67 @@ describe("CapabilityRegistry", () => {
     });
   });
 
+  it("accepts all-optional field checks when every field is nullable", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "fade_checked",
+      description: "fade checked",
+      pack: "test",
+      risk: "write_safe",
+      mutates: true,
+      undoable: true,
+      idempotent: true,
+      entity_kind: "item",
+      undo_flags: ["ITEMS"],
+      expectedDelta: {
+        count: 1,
+        fields: [
+          {
+            scope: "item",
+            field: "D_FADEINLEN",
+            paramPath: "fade_in",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+          {
+            scope: "item",
+            field: "D_FADEOUTLEN",
+            paramPath: "fade_out",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+        ],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    expect(reg.list()[0]?.expectedDelta).toEqual({
+      count: 1,
+      fields: [
+        {
+          scope: "item",
+          field: "D_FADEINLEN",
+          paramPath: "fade_in",
+          tolerance: 1e-6,
+          optional: true,
+          nullable: true,
+        },
+        {
+          scope: "item",
+          field: "D_FADEOUTLEN",
+          paramPath: "fade_out",
+          tolerance: 1e-6,
+          optional: true,
+          nullable: true,
+        },
+      ],
+    });
+  });
+
   it("deep-copies expectedDelta fields in metadata", () => {
     const reg = new CapabilityRegistry();
     reg.register({
@@ -403,6 +464,19 @@ describe("CapabilityRegistry", () => {
         count: 1,
         fields: [
           {
+            scope: "item",
+            field: "D_FADEINLEN",
+            paramPath: "fade_in",
+            nullable: "yes",
+          },
+        ],
+      }),
+    ).toThrow(/nullable must be boolean/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [
+          {
             scope: "take",
             field: "D_STARTOFFS",
             paramPath: "start_offset",
@@ -410,7 +484,27 @@ describe("CapabilityRegistry", () => {
           },
         ],
       }),
-    ).toThrow(/at least one required field/);
+    ).toThrow(/all-optional only when every field is nullable/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [
+          {
+            scope: "item",
+            field: "D_FADEINLEN",
+            paramPath: "fade_in",
+            optional: true,
+            nullable: true,
+          },
+          {
+            scope: "item",
+            field: "D_FADEOUTLEN",
+            paramPath: "fade_out",
+            optional: true,
+          },
+        ],
+      }),
+    ).toThrow(/all-optional only when every field is nullable/);
     expect(() =>
       registerWithExpectedDelta({
         count: 1,

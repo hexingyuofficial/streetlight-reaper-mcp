@@ -170,7 +170,8 @@ function validateExpectedDeltaFields(name, expected) {
   }
 
   const seen = new Set();
-  let requiredCount = 0;
+  let optionalCount = 0;
+  let nullableCount = 0;
   for (const [i, field] of fields.entries()) {
     if (!field || typeof field !== "object") {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] must be an object`);
@@ -196,7 +197,11 @@ function validateExpectedDeltaFields(name, expected) {
     if (field.optional !== undefined && typeof field.optional !== "boolean") {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] optional must be boolean`);
     }
-    if (field.optional !== true) requiredCount += 1;
+    if (field.nullable !== undefined && typeof field.nullable !== "boolean") {
+      errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] nullable must be boolean`);
+    }
+    if (field.optional === true) optionalCount += 1;
+    if (field.nullable === true) nullableCount += 1;
 
     const key = `${field.scope}:${field.field}`;
     if (seen.has(key)) {
@@ -204,8 +209,8 @@ function validateExpectedDeltaFields(name, expected) {
     }
     seen.add(key);
   }
-  if (requiredCount === 0) {
-    errors.push(`EXPECTED_DELTA_INVALID:${name}: fields must include at least one required field`);
+  if (optionalCount === fields.length && nullableCount !== fields.length) {
+    errors.push(`EXPECTED_DELTA_INVALID:${name}: fields may be all-optional only when every field is nullable`);
   }
 
   return errors;

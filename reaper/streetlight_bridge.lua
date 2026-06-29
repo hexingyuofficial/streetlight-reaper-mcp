@@ -959,7 +959,8 @@ function DISPATCH.template(cmd)
       expected_delta,
       changed_for_verify,
       params,
-      entry.entity_kind
+      entry.entity_kind,
+      ctx
     )
     if field_reason then
       return template_error_envelope({

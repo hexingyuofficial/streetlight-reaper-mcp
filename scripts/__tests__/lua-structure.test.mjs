@@ -189,7 +189,7 @@ describe("Lua bridge structure", () => {
       readRepoFile("reaper/packs/core/verify.lua"),
     ]);
 
-    expect(verify).toMatch(/function M\.check_fields\(expected, changed_ids, params, entity_kind\)/);
+    expect(verify).toMatch(/function M\.check_fields\(expected, changed_ids, params, entity_kind, ctx\)/);
     expect(verify).toMatch(/FIELD_READERS\s*=\s*{/);
     expect(verify).toMatch(/item\s*=\s*{ entity_kind = "item"/);
     expect(verify).toMatch(/take\s*=\s*{ entity_kind = "item"/);
@@ -198,8 +198,11 @@ describe("Lua bridge structure", () => {
     expect(verify).toMatch(/GetMediaItemTakeInfo_Value/);
     expect(verify).toMatch(/GetSetMediaTrackInfo_String/);
     expect(verify).toMatch(/field\.param_path or field\.paramPath/);
-    expect(verify).toMatch(/expected_value == nil and field\.optional == true/);
+    expect(verify).toMatch(/raw_value == nil and field\.optional == true/);
     expect(verify).toMatch(/item_trim\.start_offset/);
+    expect(verify).toMatch(/raw_value == ctx\.json\.null/);
+    expect(verify).toMatch(/field\.nullable == true/);
+    expect(verify).toMatch(/expected_value = 0/);
 
     const checkIndex = bridge.indexOf("verify.check(expected_delta");
     const fieldsIndex = bridge.indexOf("verify.check_fields(");
@@ -207,6 +210,7 @@ describe("Lua bridge structure", () => {
     expect(checkIndex).toBeGreaterThan(0);
     expect(fieldsIndex).toBeGreaterThan(checkIndex);
     expect(finalizeIndex).toBeGreaterThan(fieldsIndex);
+    expect(bridge).toMatch(/verify\.check_fields\([^)]*ctx/s);
     expect(bridge).toMatch(/fields = json\.array\(field_details or {}\)/);
   });
 

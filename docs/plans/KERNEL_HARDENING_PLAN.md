@@ -130,6 +130,13 @@ that are validly absent. `item_fade`, `item_duplicate`, `track_create`,
 `media_import`, `region_create`, and `render_region` stay Slice 08+
 scope.
 
+2026-06-30 note: Slice 08 extends field-level verification to
+`item_fade` and introduces `nullable:true` field descriptors. In
+`verify.lua`, explicit `json.null` is coerced to expected value `0`,
+matching the fade-clear handler contract. `item_duplicate`,
+`track_create`, `media_import`, and `region_create` stay Slice 09+
+because creates/maybeCreates templates still need the D5 relaxation.
+
 **触及文件**：
 - `packages/core/src/registry.ts`（`expectedDelta` 字段）
 - `packages/core/src/errors.ts`（`VERIFY_FAILED`）

@@ -89,7 +89,7 @@ describe("listTemplates", () => {
     expect(renderRegion).not.toHaveProperty("expectedDelta");
   });
 
-  it("exposes field-check metadata only on the five covered in-place templates", () => {
+  it("exposes field-check metadata only on the six covered in-place templates", () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);
     const result = listTemplates(registry);
@@ -108,6 +108,27 @@ describe("listTemplates", () => {
       [
         "item_rate",
         [{ scope: "take", field: "D_PLAYRATE", paramPath: "rate", tolerance: 1e-6 }],
+      ],
+      [
+        "item_fade",
+        [
+          {
+            scope: "item",
+            field: "D_FADEINLEN",
+            paramPath: "fade_in",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+          {
+            scope: "item",
+            field: "D_FADEOUTLEN",
+            paramPath: "fade_out",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+        ],
       ],
       [
         "item_trim",
@@ -134,6 +155,25 @@ describe("listTemplates", () => {
         expect(template.expectedDelta?.fields).toEqual(expectedFields);
       } else if (template.expectedDelta !== undefined) {
         expect(template.expectedDelta).not.toHaveProperty("fields");
+      }
+    }
+  });
+
+  it("does not leak nullable metadata onto templates that did not declare it", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    for (const template of result.result.templates) {
+      const fields = template.expectedDelta?.fields ?? [];
+      for (const field of fields) {
+        if (template.name === "item_fade") {
+          expect(field).toHaveProperty("nullable", true);
+        } else {
+          expect(field).not.toHaveProperty("nullable");
+        }
       }
     }
   });

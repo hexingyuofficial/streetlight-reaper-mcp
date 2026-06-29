@@ -136,6 +136,30 @@ describe("callTemplate", () => {
         },
       ],
       [
+        "item_fade",
+        {
+          count: 1,
+          fields: [
+            {
+              scope: "item",
+              field: "D_FADEINLEN",
+              param_path: "fade_in",
+              tolerance: 1e-6,
+              optional: true,
+              nullable: true,
+            },
+            {
+              scope: "item",
+              field: "D_FADEOUTLEN",
+              param_path: "fade_out",
+              tolerance: 1e-6,
+              optional: true,
+              nullable: true,
+            },
+          ],
+        },
+      ],
+      [
         "item_trim",
         {
           count: 1,
@@ -151,7 +175,6 @@ describe("callTemplate", () => {
           ],
         },
       ],
-      ["item_fade", { count: 1 }],
       ["item_duplicate", { count: 1, creates: true }],
       ["media_import", { count: "any", creates: true }],
       ["track_create", { count: 1, maybeCreates: true }],
@@ -234,6 +257,123 @@ describe("callTemplate", () => {
       expect(bridge.seen.at(-1)?.expected_delta).toEqual({
         count: 1,
         fields: expectedFields,
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: item_fade sends nullable field descriptors for numeric params", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{FADE}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "item_fade",
+        params: { item_id: "selected:0", fade_in: 0.25, fade_out: 0.5 },
+      });
+      expect(bridge.seen.at(-1)?.params).toEqual({
+        item_id: "selected:0",
+        fade_in: 0.25,
+        fade_out: 0.5,
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        fields: [
+          {
+            scope: "item",
+            field: "D_FADEINLEN",
+            param_path: "fade_in",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+          {
+            scope: "item",
+            field: "D_FADEOUTLEN",
+            param_path: "fade_out",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+        ],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: item_fade preserves explicit null params with stable descriptors", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{FADE}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "item_fade",
+        params: { item_id: "selected:0", fade_in: null },
+      });
+      expect(bridge.seen.at(-1)?.params).toEqual({
+        item_id: "selected:0",
+        fade_in: null,
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        fields: [
+          {
+            scope: "item",
+            field: "D_FADEINLEN",
+            param_path: "fade_in",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+          {
+            scope: "item",
+            field: "D_FADEOUTLEN",
+            param_path: "fade_out",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+        ],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: item_fade accepts no fade fields while keeping the descriptor stable", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{FADE}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "item_fade",
+        params: { item_id: "selected:0" },
+      });
+      expect(bridge.seen.at(-1)?.params).toEqual({
+        item_id: "selected:0",
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        fields: [
+          {
+            scope: "item",
+            field: "D_FADEINLEN",
+            param_path: "fade_in",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+          {
+            scope: "item",
+            field: "D_FADEOUTLEN",
+            param_path: "fade_out",
+            tolerance: 1e-6,
+            optional: true,
+            nullable: true,
+          },
+        ],
       });
     } finally {
       await bridge.stop();
