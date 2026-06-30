@@ -54,6 +54,8 @@ export interface SendOptions {
   timeoutMs: number;
   /** Optional descriptor-driven verification payload for template commands. */
   expectedDelta?: unknown;
+  /** Optional caller-provided dedup key for retrying one logical mutation. */
+  idempotencyKey?: string;
 }
 
 export interface FileQueueClientOptions {
@@ -162,6 +164,9 @@ export class FileQueueClient {
       ...(name !== undefined ? { name } : {}),
       ...(opts.expectedDelta !== undefined
         ? { expected_delta: opts.expectedDelta }
+        : {}),
+      ...(opts.idempotencyKey !== undefined
+        ? { idempotency_key: opts.idempotencyKey }
         : {}),
     };
 

@@ -421,6 +421,14 @@ Result files:
 
 This queue can later be replaced or supplemented by a socket transport without changing the MCP tool contract.
 
+Slice 14 adds bridge-level retry safety on top of this file queue:
+mutating `call_template` commands may carry an optional
+`idempotency_key`. The bridge stores terminal inner envelopes in an
+in-memory FIFO DEDUP table and replays them on a later command with the
+same key, so the project is not mutated twice during a retry. This does
+not add a new MCP tool and does not change the locked result envelope.
+`render_region` remains a deferred/file-artifact carve-out in v0.1.
+
 ### Later: Socket or HTTP
 
 Add only after the file queue MVP is reliable.

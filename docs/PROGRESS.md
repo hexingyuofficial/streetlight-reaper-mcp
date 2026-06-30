@@ -11,30 +11,45 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 13 ✅ live-smoked / not committed
-(2026-06-30).** Architect packet lives at
-`docs/plans/SLICE_13_ARCHITECT_PLAN.md`; source master plans remain
+**Kernel hardening Slice 14 ✅ live-smoked / static-green /
+uncommitted (2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_14_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
-`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 13 continues H2
-field-level verification by expanding `region_create` from one region
-field to three. The descriptor order is `[name, pos, rgnend]`: name is
-strict string equality; `pos ← params.start` and
-`rgnend ← params.end` use tolerance `1e-6` and `optional:true`.
-Explicit mode `{name,start,end}` verifies all three fields. Item-derived
-mode `{name,item_id}` still verifies only `name` because `start` and
-`end` are absent, so the bounds fields skip via Slice 07's
-optional-absent rule. This deliberately avoids a new computed-expected
-axis for deriving bounds from `item_id`. Decisions locked by user:
-D1=a region bounds; D2=a `pos` / `rgnend`; D3=a tolerance `1e-6`;
-D4=a order `[name,pos,rgnend]`; D5=a document the item-mode trade-off;
-D6=a reuse Slice 12 orphan-region contract; D7=b reference Slice 12
-baseline `6e4a02f`. No Lua runtime files changed. Static gates are
-green before the mid-smoke owner fix: focused suite 90/90,
-`npm test` 292/292, `npm run build` clean, `npm run check:manifest`
-green, `npm run check:error-codes-fresh` green, and `git diff --check`
-clean. After the owner fix, full `npm test` is **293/293** with build /
-manifest / error-code / diff-check still clean. REAPER re-smoke is green
-on REAPER `7.71/macOS-arm64` with run id `slice13-1782809548082`.
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 14 implements H4
+Phase 1 idempotency tokens. `call_template` now accepts optional
+caller-provided `idempotency_key` values (1-128 ASCII-printable chars,
+no control bytes). The MCP server threads the key through
+`QueueCommand.idempotency_key`, and the bridge keeps an in-memory FIFO
+`DEDUP` table capped at 256 entries. A replay returns the stored inner
+`result` / `error` verbatim with a fresh outer `id` and `completed_at`;
+handlers are not invoked, undo is not opened, H2 verification is not
+re-run, and `LAST_RESULT` is not updated. Successes and typed errors
+are stored. `INTERNAL_ERROR` terminals are not stored. `render_region`
+and read paths are explicit carve-outs. The table clears on bridge
+reload / REAPER restart. Decisions locked by user: D1-D10 all
+recommended values (`a`). Reviewer Averroes caught one P1 before live
+smoke: the public MCP server entrypoint `packages/mcp-server/src/index.ts`
+still exposed only `{name,params}` and did not forward
+`idempotency_key`, so direct helper tests passed but real agents could
+not use the key. Fixed by adding the public tool schema field,
+forwarding it into `callTemplate(...)`, updating the tool description,
+and adding `scripts/__tests__/mcp-index.test.mjs`. Static gates are
+green: focused suite **83/83**, full `npm test` **309/309**,
+`npm run build` clean,
+`npm run check:manifest` green, `npm run check:error-codes-fresh`
+green, and `git diff --check` clean. REAPER live smoke
+`slice14-1782815129961` passed on `7.71/macOS-arm64` after the user's
+full REAPER restart and current `start_bridge.lua` load; cleanup left
+`pending=0`, `running=0`, `done=0` with only `bridge_owner` remaining.
+
+**Kernel hardening Slice 13 ✅ live-smoked, committed, and pushed
+(2026-06-30, `f998507`).** Architect packet lives at
+`docs/plans/SLICE_13_ARCHITECT_PLAN.md`. Slice 13 expanded
+`region_create.expectedDelta.fields[]` from one field to three:
+`[name, pos, rgnend]`, and the mid-smoke file-backed `bridge_owner`
+guard fixed double launcher ownership across separate ReaScript Lua
+states. REAPER re-smoke is green on `7.71/macOS-arm64` with run id
+`slice13-1782809548082`.
 
 Mid-smoke blocker found after this code drop: first smoke attempt
 `slice13-1782808140769` passed `ping` and `list_templates`, then
@@ -764,7 +779,91 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
-### Kernel hardening Slice 13 (2026-06-30) — region_create explicit bounds field verification ✅ live-smoked
+### Kernel hardening Slice 14 (2026-06-30) — H4 idempotency tokens Phase 1 ✅ live-smoked/static-green
+
+Scope from `docs/plans/SLICE_14_ARCHITECT_PLAN.md`: add
+caller-provided retry keys for mutating `call_template` commands.
+
+Locked decisions:
+
+- D1=a: do H4 Phase 1 now.
+- D2=a: caller-provided keys only; no auto-keying.
+- D3=a: bridge FIFO DEDUP cap is 256.
+- D4=a: key length 1-128, ASCII printable only.
+- D5=a: DEDUP clears on bridge reload / REAPER restart.
+- D6=a: same key + different params silently replays first result.
+- D7=a: read wire kinds ignore keys; public read MCP tools unchanged.
+- D8=a: `INTERNAL_ERROR` terminals are not stored.
+- D9=a: typed errors, including `VERIFY_FAILED`, are stored.
+- D10=a: no special bridge-owner interaction.
+
+Code shape:
+
+- `QueueCommand` now has optional `idempotency_key`.
+- `FileQueueClient.send()` accepts `idempotencyKey` and writes
+  `idempotency_key` only when present.
+- `call_template` validates optional `idempotency_key` before queue write
+  and threads it to the queue. `render_region` with a key logs a warning
+  because it remains the v0.1 carve-out.
+- `streetlight_bridge.lua` owns chunk-local `DEDUP[key] = inner envelope`
+  plus FIFO order. The check happens after pending->running claim and
+  before dispatch. Replay writes a normal done envelope with fresh outer
+  `id` / `completed_at`; it does not call the handler, open undo, re-run
+  verify, or update `LAST_RESULT`.
+- Successes and typed errors are stored. `INTERNAL_ERROR`, read paths,
+  and `tick_deferred` are not stored/touched.
+
+Static verification:
+
+- Focused suite: 83/83 green.
+- Full `npm test`: 309/309 green.
+- `npm run build`: clean.
+- `npm run check:manifest`: green, 11 templates aligned.
+- `npm run check:error-codes-fresh`: green, 22 codes fresh.
+- `git diff --check`: clean.
+
+Live REAPER smoke:
+
+- Run id: `slice14-1782815129961`; queue:
+  `/Users/Zhuanz/Library/Application Support/Streetlight/queue`; REAPER:
+  `7.71/macOS-arm64`. User preflight showed `bridge starting
+  (generation 1)`, `loaded error_codes (22 codes)`, and `bridge ready
+  (generation 1)`.
+- S0/S1 passed: `ping` connected; `list_templates` returned exactly 11
+  templates with no new idempotency metadata fields;
+  `region_create.expectedDelta.fields[]` stayed `[name,pos,rgnend]`;
+  `render_region` still had no `expectedDelta`.
+- No-key baseline passed: `track_create`
+  `guid:{75329121-6A9F-BB4C-AEA2-EB0ABB8EF522}` followed by
+  `media_import track_id:"last_result:track:0"` producing
+  `guid:{C4E22D92-4022-6644-AF9B-0EF1C7EFDFB0}`.
+- Dedup happy path passed: idempotency key
+  `slice14-1782815129961-pitch-once` replayed the first `item_pitch`
+  inner result. A live verifier probe proved the take pitch remained
+  `-3`; a deliberate `-6` probe returned `VERIFY_FAILED`, so replay did
+  not double-apply.
+- Typed-error replay passed: key
+  `slice14-1782815129961-typed-error` returned identical
+  `ITEM_NOT_FOUND` envelopes twice for an invalid item GUID.
+- `LAST_RESULT` preservation passed after replay: `item_rate
+  last_result:item:0` succeeded, and a no-key `track_rename
+  last_result:track:0` succeeded after a replay on track
+  `guid:{3BF45FDC-4DB6-FE44-941B-D9A9742969DE}`.
+- Carve-outs passed: `render_region` with key
+  `slice14-1782815129961-render-carveout` executed twice after deleting
+  the first WAV and returned only
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/slice14-1782815129961/slice14-1782815129961-render-region.wav`;
+  no `.RPP` / `.RPP-bak` sidecars remained. Direct-queue `ping` and
+  `get_state(project)` with `idempotency_key` did not replay.
+- Regression sweep passed: different keys executed independently; no-key
+  behavior remained normal; representative `item_move`, `item_trim`,
+  `item_fade`, `item_duplicate`, `track_create` reuse, `media_import`,
+  `region_create` explicit + item-mode, error-code probes, `get_state`
+  include/regression, and render artifact checks all passed.
+- Cleanup passed: temp render dir was deleted; queue ended with
+  `pending=0`, `running=0`, `done=0`; only `bridge_owner` remained.
+
+### Kernel hardening Slice 13 (2026-06-30) — region_create explicit bounds field verification ✅ live-smoked / pushed `f998507`
 
 Scope: extend Slice 12's region-scope field verification from
 `name` only to `name + pos + rgnend`, without changing Lua runtime
@@ -1776,8 +1875,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-12 ✅ pushed; Slice 13 code-done/static-green/reviewer-pass/live-smoked | Commit / push Slice 13 only on explicit ask |
-| Tests | Slice 13: 293/293 green after owner fix; build / manifest / error-code clean; focused suite 90/90 pre-owner-fix; REAPER smoke `slice13-1782809548082`; Slice 12 pushed at `6e4a02f` | git versioning |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-13 ✅ pushed; Slice 14 live-smoked/static-green | Reviewer pass / versioning decision if needed |
+| Tests | Slice 14: focused 83/83, full 309/309, build / manifest / error-code / diff-check clean; live smoke `slice14-1782815129961`; Slice 13 pushed at `f998507` with smoke `slice13-1782809548082` | Reviewer / commit only on explicit ask |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -1823,17 +1922,19 @@ Slice 07 was committed and pushed at `9244be3`; Slice 08 was committed
 and pushed at `c923df9`; Slice 09 was committed and pushed at
 `bf15daa`; Slice 10 was committed and pushed at `2babc5c`; Slice 11
 was committed and pushed at `f66b2db`; Slice 12 was committed and
-pushed at `6e4a02f`. Slice 13 is code-done, static-green,
-reviewer-pass, and live-smoked locally, not committed or pushed.
+pushed at `6e4a02f`; Slice 13 was committed and pushed at `f998507`.
+Slice 14 is code-done, static-green, and live-smoked with run id
+`slice14-1782815129961`, waiting for reviewer pass / versioning
+decision if needed.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Commit / push Slice 13 only on explicit ask.** Local verification
-   is complete; the working tree is intentionally uncommitted.
-3. **Second-Mac smoke / v0.1 release tag remains available.**
+1. **Reviewer / versioning decision for Slice 14.** Static gates and
+   live smoke are green. Commit/push only if the user explicitly asks.
+2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 

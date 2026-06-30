@@ -30,6 +30,16 @@ export interface QueueCommand<P = unknown> {
   params: P;
   /** Template structural verification spec when `kind === "template"`. */
   expected_delta?: unknown;
+  /**
+   * Optional caller-provided deduplication key. When set on a mutating
+   * template command that is not `render_region`, the bridge may replay the
+   * first terminal envelope for later commands with the same key instead of
+   * executing the handler again.
+   *
+   * This is distinct from `id`: `id` identifies one queue command, while
+   * `idempotency_key` identifies one logical operation across retries.
+   */
+  idempotency_key?: string;
   /** ISO 8601 UTC timestamp. */
   created_at: string;
 }

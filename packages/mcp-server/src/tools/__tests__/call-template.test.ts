@@ -885,6 +885,282 @@ describe("callTemplate", () => {
     expect(left.length).toBeLessThanOrEqual(1);
   });
 
+  describe("idempotency_key", () => {
+    it("same key + same params replays the first terminal envelope without re-invoking the handler", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return fakeTemplateOk("item_pitch", ["guid:{ONCE}"]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const input = {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "slice14-same-op",
+        };
+        const first = await callTemplate(client, registry, input);
+        const second = await callTemplate(client, registry, input);
+
+        expect(first).toEqual(second);
+        expect(handlerCalls).toBe(1);
+        expect(bridge.seen).toHaveLength(2);
+        expect(bridge.seen[0]?.idempotency_key).toBe("slice14-same-op");
+        expect(bridge.seen[1]?.idempotency_key).toBe("slice14-same-op");
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("same key + different params still replays the first inner envelope in v0.1", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        (cmd) => {
+          handlerCalls += 1;
+          const semitones = (cmd.params as { semitones?: number }).semitones;
+          return fakeTemplateOk("item_pitch", [`guid:{PITCH-${semitones}}`]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const first = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "slice14-caller-bug",
+        });
+        const second = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: 7 },
+          idempotency_key: "slice14-caller-bug",
+        });
+
+        expect(first).toEqual(second);
+        expect(handlerCalls).toBe(1);
+        expect(bridge.seen).toHaveLength(2);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("different keys + same params execute independently", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return fakeTemplateOk("item_pitch", [`guid:{CALL-${handlerCalls}}`]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const first = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "slice14-key-a",
+        });
+        const second = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "slice14-key-b",
+        });
+
+        expect(first.ok).toBe(true);
+        expect(second.ok).toBe(true);
+        expect(first).not.toEqual(second);
+        expect(handlerCalls).toBe(2);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("no key preserves current behavior and executes twice", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return fakeTemplateOk("item_pitch", [`guid:{CALL-${handlerCalls}}`]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+        });
+        await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+        });
+
+        expect(handlerCalls).toBe(2);
+        expect(bridge.seen).toHaveLength(2);
+        expect(bridge.seen[0]).not.toHaveProperty("idempotency_key");
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("render_region accepts a key but remains a dedup carve-out", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return fakeTemplateOk("render_region", [`/tmp/render-${handlerCalls}.wav`]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const first = await callTemplate(client, registry, {
+          name: "render_region",
+          params: { region_id: "region:var_01", output_dir: "/tmp" },
+          idempotency_key: "slice14-render",
+        });
+        const second = await callTemplate(client, registry, {
+          name: "render_region",
+          params: { region_id: "region:var_01", output_dir: "/tmp" },
+          idempotency_key: "slice14-render",
+        });
+
+        expect(first.ok).toBe(true);
+        expect(second.ok).toBe(true);
+        expect(first).not.toEqual(second);
+        expect(handlerCalls).toBe(2);
+        expect(bridge.seen).toHaveLength(2);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("typed errors are replayed for the same key", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return {
+            ok: false,
+            error: {
+              code: "ITEM_NOT_FOUND",
+              message: "No selected item at index 99",
+              recoverable: true,
+            },
+          };
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const input = {
+          name: "item_pitch",
+          params: { item_id: "selected:99", semitones: 0 },
+          idempotency_key: "slice14-typed-error",
+        };
+        const first = await callTemplate(client, registry, input);
+        const second = await callTemplate(client, registry, input);
+
+        expect(first).toEqual(second);
+        expect(first.ok).toBe(false);
+        expect(handlerCalls).toBe(1);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("INTERNAL_ERROR terminals are not stored and a retry re-executes", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          if (handlerCalls === 1) {
+            return {
+              ok: false,
+              error: {
+                code: "INTERNAL_ERROR",
+                message: "boom",
+                recoverable: false,
+              },
+            };
+          }
+          return fakeTemplateOk("item_pitch", ["guid:{RECOVERED}"]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const input = {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "slice14-internal",
+        };
+        const first = await callTemplate(client, registry, input);
+        const second = await callTemplate(client, registry, input);
+
+        expect(first.ok).toBe(false);
+        expect(second.ok).toBe(true);
+        expect(handlerCalls).toBe(2);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("accepts a 128-character key and rejects a 129-character key before queue write", async () => {
+      const bridge = startFakeBridge(queueDir, () =>
+        fakeTemplateOk("item_pitch", ["guid:{MAX}"]),
+      );
+
+      try {
+        const okResult = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "x".repeat(128),
+        });
+        expect(okResult.ok).toBe(true);
+        expect(bridge.seen.at(-1)?.idempotency_key).toBe("x".repeat(128));
+
+        const badResult = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: "x".repeat(129),
+        });
+        expect(badResult.ok).toBe(false);
+        if (!badResult.ok) expect(badResult.error.code).toBe("PARAMS_INVALID");
+        expect(bridge.seen).toHaveLength(1);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("rejects control characters in idempotency_key before queue write", async () => {
+      const pendingDir = path.join(queueDir, "pending");
+
+      for (const key of ["bad\nkey", "bad\tkey", "bad\u0000key"]) {
+        const result = await callTemplate(client, registry, {
+          name: "item_pitch",
+          params: { item_id: "selected:0", semitones: -3 },
+          idempotency_key: key,
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe("PARAMS_INVALID");
+        }
+      }
+
+      expect(await fs.readdir(pendingDir)).toEqual([]);
+    });
+  });
+
   describe("risk policy enforcement", () => {
     // Fresh registry per test — we deliberately add a `destructive`
     // template that the v0.1 core registry does not contain, so we can
@@ -918,6 +1194,7 @@ describe("callTemplate", () => {
         // Deliberately pass an unknown param. RISK_BLOCKED must fire BEFORE
         // params parse so this junk should not produce PARAMS_INVALID.
         params: { bogus: 1 },
+        idempotency_key: "slice14-risk-blocked",
       });
 
       expect(result.ok).toBe(false);

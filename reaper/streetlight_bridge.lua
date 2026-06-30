@@ -134,6 +134,45 @@ local ENTITY_BUCKET = buckets.build_entity_bucket_map(MANIFEST, {
 })
 local LAST_RESULT = buckets.make_last_result(ENTITY_BUCKET)
 
+-- Slice 14 / H4 Phase 1: retry deduplication for mutating template commands.
+-- The table is intentionally in-memory and bridge-lifetime scoped, like
+-- LAST_RESULT. `render_region` is carved out because it resolves via the
+-- deferred slot; v0.2 may add terminal-envelope replay for deferred templates.
+local DEDUP_CAP = 256
+local DEDUP = {}
+local DEDUP_ORDER = {}
+
+local function dedup_get(key)
+  if type(key) ~= "string" or key == "" then return nil end
+  return DEDUP[key]
+end
+
+local function dedup_put(key, inner)
+  if type(key) ~= "string" or key == "" then return end
+  if DEDUP[key] ~= nil then return end
+  DEDUP[key] = inner
+  DEDUP_ORDER[#DEDUP_ORDER + 1] = key
+  while #DEDUP_ORDER > DEDUP_CAP do
+    local oldest = table.remove(DEDUP_ORDER, 1)
+    DEDUP[oldest] = nil
+  end
+end
+
+local function dedup_eligible(cmd)
+  return type(cmd) == "table"
+    and cmd.kind == "template"
+    and cmd.name ~= "render_region"
+    and type(cmd.idempotency_key) == "string"
+    and cmd.idempotency_key ~= ""
+end
+
+local function dedup_inner_is_internal_error(inner)
+  return type(inner) == "table"
+    and inner.ok == false
+    and type(inner.error) == "table"
+    and inner.error.code == ERRS.INTERNAL_ERROR
+end
+
 -- ─── Helpers ────────────────────────────────────────────────────────────────
 
 local function iso_now()
@@ -1104,7 +1143,17 @@ local function process_one()
       }
     else
       local cmd = cmd_or_err
-      local result = dispatch(cmd)
+      local can_dedup = dedup_eligible(cmd)
+      local stored_inner = can_dedup and dedup_get(cmd.idempotency_key) or nil
+      local result = nil
+
+      if stored_inner ~= nil then
+        log("dedup replay key=" .. cmd.idempotency_key:sub(1, 16)
+          .. " template=" .. tostring(cmd.name or "?"))
+        envelope = shape_outer_envelope(cmd.id or id, stored_inner)
+      else
+        result = dispatch(cmd)
+      end
 
       -- Deferred sentinel: handler wants more ticks. Stash the slot
       -- metadata so subsequent ticks call recheck. The running file
@@ -1112,7 +1161,7 @@ local function process_one()
       -- our durability story if REAPER is killed mid-render (next
       -- session sees the orphan in running/ and ignores it; the
       -- agent's MCP-side timeout already fired BRIDGE_NOT_RUNNING).
-      if type(result) == "table" and result.deferred then
+      if envelope == nil and type(result) == "table" and result.deferred then
         local cmd_id = cmd.id or id
         DEFERRED = {
           id            = cmd_id,
@@ -1128,13 +1177,26 @@ local function process_one()
         return
       end
 
-      envelope = {
-        id           = cmd.id or id,
-        ok           = result.ok,
-        completed_at = iso_now(),
-      }
-      if result.ok then envelope.result = result.result end
-      if result.error then envelope.error = result.error end
+      if envelope == nil then
+        envelope = {
+          id           = cmd.id or id,
+          ok           = result.ok,
+          completed_at = iso_now(),
+        }
+        if result.ok then envelope.result = result.result end
+        if result.error then envelope.error = result.error end
+
+        if can_dedup then
+          local inner = {
+            ok = result.ok,
+            result = result.result,
+            error = result.error,
+          }
+          if not dedup_inner_is_internal_error(inner) then
+            dedup_put(cmd.idempotency_key, inner)
+          end
+        end
+      end
     end
   end
 

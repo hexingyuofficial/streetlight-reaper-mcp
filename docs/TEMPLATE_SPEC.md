@@ -110,6 +110,72 @@ before/after structural snapshot disagreed with that template's
 history. Agents must inspect state with `get_state`; they must not
 blindly retry.
 
+## Idempotency
+
+Slice 14 adds an optional caller-provided `idempotency_key` to
+`call_template`.
+
+```json
+{
+  "name": "item_pitch",
+  "params": {
+    "item_id": "selected:0",
+    "semitones": -3
+  },
+  "idempotency_key": "agent-session-7-step-12"
+}
+```
+
+Key rules:
+
+- `idempotency_key` is optional.
+- Valid keys are 1-128 ASCII-printable characters (`0x20` through
+  `0x7e`); control bytes, tabs, and newlines are rejected with
+  `PARAMS_INVALID` before any queue write.
+- The caller owns key choice. Use one stable key per logical mutation
+  retry window.
+- `id` and `idempotency_key` are different. The queue `id` is unique
+  per attempt and decides where the done file lands. The idempotency key
+  is stable across retries of one logical operation.
+
+Replay semantics:
+
+- On the first eligible mutating template call, the bridge executes the
+  handler normally and stores the terminal inner envelope.
+- On a later eligible call with the same key, the bridge replays the
+  stored inner envelope without invoking the handler, opening undo, or
+  re-running verification.
+- The replayed response has the current attempt's outer `id` and
+  `completed_at`, but its inner `result` or `error` is the first
+  terminal result verbatim.
+- Replay does not update `LAST_RESULT`. The first successful execution
+  already updated it.
+
+Stored terminals:
+
+- Successes are stored.
+- Typed errors are stored, including `VERIFY_FAILED`.
+- `INTERNAL_ERROR` is not stored; a retry with the same key executes
+  again after the caller reconciles state.
+
+Carve-outs:
+
+- `render_region` is a deferred/file-artifact template and is not
+  deduped in Slice 14. A key is accepted by the wire path, but the
+  bridge executes `render_region` every time.
+- Read paths (`ping`, `get_state`, `list_templates`, `list_recipes`)
+  do not touch the dedup table.
+
+v0.1 limitations:
+
+- The dedup table is in-memory only, bounded FIFO with cap 256, and is
+  cleared by bridge reload or REAPER restart.
+- Same key plus different params silently replays the first result. The
+  caller is responsible for using a key only for the same logical
+  operation.
+- v0.2 may add persistence, deferred-template replay, auto-keying, and
+  optional key/param conflict diagnostics.
+
 ## Safety Requirements
 
 Mutating templates must:

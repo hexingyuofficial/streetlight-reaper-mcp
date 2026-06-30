@@ -3,6 +3,7 @@ import {
   makeCommandId,
   _resetCounterForTests,
   _setRngForTests,
+  type QueueCommand,
 } from "../queue.js";
 
 describe("makeCommandId", () => {
@@ -62,5 +63,49 @@ describe("makeCommandId", () => {
     _setRngForTests(() => 0xffffff / 0x1000000);
     const id = makeCommandId(new Date("2026-06-27T12:00:00.000Z"));
     expect(id.endsWith("_ffffff")).toBe(true);
+  });
+
+  it("QueueCommand carries an optional idempotency_key distinct from id", () => {
+    const command: QueueCommand = {
+      id: "cmd_20260630120000000_001_000000",
+      kind: "template",
+      name: "item_pitch",
+      params: { item_id: "selected:0", semitones: -3 },
+      idempotency_key: "session-1-step-12",
+      created_at: "2026-06-30T12:00:00.000Z",
+    };
+
+    expect(command.id).not.toBe(command.idempotency_key);
+    expect(command.idempotency_key).toBe("session-1-step-12");
+  });
+
+  it("QueueCommand idempotency_key round-trips through JSON", () => {
+    const command: QueueCommand = {
+      id: "cmd_20260630120000000_001_000000",
+      kind: "template",
+      name: "track_create",
+      params: { name: "Slice14", reuse_existing: true },
+      idempotency_key: "x".repeat(128),
+      created_at: "2026-06-30T12:00:00.000Z",
+    };
+
+    const parsed = JSON.parse(JSON.stringify(command)) as QueueCommand;
+    expect(parsed.idempotency_key).toBe("x".repeat(128));
+  });
+
+  it("makeCommandId remains independent of idempotency keys", () => {
+    _setRngForTests(() => 0);
+    const id = makeCommandId(new Date("2026-06-30T12:00:00.000Z"));
+    const command: QueueCommand = {
+      id,
+      kind: "template",
+      name: "item_move",
+      params: { item_id: "selected:0", position: 1 },
+      idempotency_key: "same-logical-op",
+      created_at: "2026-06-30T12:00:00.000Z",
+    };
+
+    expect(command.id).toMatch(/^cmd_20260630120000000_/);
+    expect(command.id).not.toBe(command.idempotency_key);
   });
 });

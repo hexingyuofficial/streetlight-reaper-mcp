@@ -105,6 +105,42 @@ describe("FileQueueClient", () => {
     }
   });
 
+  it("writes idempotency_key to the command JSON when provided", async () => {
+    const bridge = startFakeBridge(queueDir);
+    try {
+      const result = await client.send(
+        "template",
+        { item_id: "selected:0", semitones: -3 },
+        { timeoutMs: 5000, idempotencyKey: "slice14-key" },
+        "item_pitch",
+      );
+
+      expect(result.ok).toBe(true);
+      expect(bridge.seen).toHaveLength(1);
+      expect(bridge.seen[0]?.idempotency_key).toBe("slice14-key");
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("omits idempotency_key from command JSON when absent", async () => {
+    const bridge = startFakeBridge(queueDir);
+    try {
+      const result = await client.send(
+        "template",
+        { item_id: "selected:0", semitones: -3 },
+        { timeoutMs: 5000 },
+        "item_pitch",
+      );
+
+      expect(result.ok).toBe(true);
+      expect(bridge.seen).toHaveLength(1);
+      expect(bridge.seen[0]).not.toHaveProperty("idempotency_key");
+    } finally {
+      await bridge.stop();
+    }
+  });
+
   it("surfaces an error envelope from the bridge", async () => {
     const bridge = startFakeBridge(queueDir, () => ({
       ok: false,

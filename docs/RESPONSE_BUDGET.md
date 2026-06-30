@@ -379,6 +379,12 @@ normal `{scope, field, expected, actual, tolerance, ok}` detail is
 built. The error message still tells agents to call `get_state` because
 the mutation may already be applied.
 
+Slice 14 adds optional request-side `idempotency_key` to the queue
+command JSON. It is capped at 128 ASCII-printable characters and does
+not change any response envelope. A replay returns the stored inner
+`result` or `error` verbatim with a fresh outer `id` and `completed_at`,
+so the existing response byte budget remains the same.
+
 ### Empty Strings vs Missing Fields
 
 `name` and `track_name` are required `string` on every descriptor. When the

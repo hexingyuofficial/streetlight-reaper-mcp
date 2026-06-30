@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 13 ✅ live-smoked; region_create bounds verify)
+# Handoff — 2026-06-30 (Kernel Slice 14 live-smoked; H4 idempotency tokens)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -10,38 +10,97 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   `d3f8fe7` Kernel Slice 04, `5ba6318` Kernel Slice 05, and
   `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07,
   `c923df9` Kernel Slice 08, `bf15daa` Kernel Slice 09,
-  `2babc5c` Kernel Slice 10, `f66b2db` Kernel Slice 11, and
-  `6e4a02f` Kernel Slice 12. Slice 13 is code-done locally and
-  live-smoked on REAPER 7.71/macOS-arm64. H2 field-level verification now covers
-  `region_create` explicit bounds: `name`, `pos`, and `rgnend`. The
-  user manages versioning out-of-band — do NOT commit, branch, push, or
-  reset without an explicit ask.
-- Slice 13 static baseline after the mid-smoke owner fix: full
-  `npm test` → **293/293 green**, `npm run build` → clean,
+  `2babc5c` Kernel Slice 10, `f66b2db` Kernel Slice 11,
+  `6e4a02f` Kernel Slice 12, and `f998507` Kernel Slice 13.
+  Slice 14 is code-done locally, static-green, and live-smoked. It
+  implements H4 Phase 1 idempotency tokens: optional caller-provided
+  `call_template.idempotency_key`, bridge in-memory FIFO DEDUP cap 256,
+  success + typed-error replay, `INTERNAL_ERROR` skip, and explicit
+  `render_region` / read-path carve-outs. The user manages versioning
+  out-of-band — do NOT commit, branch, push, or reset without an
+  explicit ask.
+- Slice 14 static baseline: focused suite **83/83 green**, full
+  `npm test` → **309/309 green**, `npm run build` → clean,
   `npm run check:manifest` → 11 templates aligned,
   `npm run check:error-codes-fresh` → 22 codes fresh, and
-  `git diff --check` → clean. Focused Slice 13 suite was **90/90
-  green** before the owner fix; the bridge-structure test added one
-  more static guard. The implemented contract is
-  `region_create.expectedDelta = {count:1, creates:true, fields:[region
-  name <- name, region pos <- start optional tolerance 1e-6, region
-  rgnend <- end optional tolerance 1e-6]}`. No Lua runtime files changed:
-  Slice 13 activates the `pos` / `rgnend` region readers added in
-  Slice 12 and the optional-absent rule added in Slice 07. First
-  REAPER smoke attempt stopped at S2b with a double-owner
-  `LAST_RESULT` split (two `generation 1` ready lines; `track_create`
-  succeeded in one bridge instance, `media_import last_result:track:0`
-  was claimed by another). Mid-smoke blocker fix adds a file-backed
-  `bridge_owner` token in the queue dir so the last launcher run is the
-  only owner even across separate ReaScript Lua states. REAPER re-smoke
-  `slice13-1782809548082` is green; S2b proved the owner-guard
-  regression by importing media with `track_id:"last_result:track:0"`
-  immediately after `track_create`.
+  `git diff --check` → clean. REAPER live smoke
+  `slice14-1782815129961` passed on `7.71/macOS-arm64` after the user's
+  full REAPER restart and current `start_bridge.lua` load.
+- Slice 13 is committed and pushed at `f998507`. It expanded
+  `region_create.expectedDelta.fields[]` to `[name,pos,rgnend]` and
+  fixed the double-owner bridge bug with a file-backed `bridge_owner`
+  token. REAPER re-smoke `slice13-1782809548082` is green on REAPER
+  `7.71/macOS-arm64`.
 - `docs/PUBLIC_STORY.md` is the living public narrative / launch-copy
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
-- **Kernel hardening Slice 13 ✅ live-smoked / not committed
+- **Kernel hardening Slice 14 ✅ live-smoked / static-green / uncommitted
+  (2026-06-30).** Scope from
+  `docs/plans/SLICE_14_ARCHITECT_PLAN.md`:
+  - Adds optional `idempotency_key` to `call_template`, validated at
+    1-128 ASCII-printable chars before queue write.
+  - `QueueCommand.idempotency_key` is distinct from command `id`; the
+    former is the logical-operation retry key, the latter is the
+    per-attempt queue/done-file id.
+  - `reaper/streetlight_bridge.lua` owns in-memory `DEDUP[key] = inner
+    envelope` with FIFO cap 256. Replay refreshes outer `id` and
+    `completed_at` while preserving the stored `result` / `error`.
+  - Successes and typed errors are stored. `INTERNAL_ERROR` is not
+    stored. `render_region` and read paths are carved out.
+  - Replay does not invoke handlers, open undo, re-run H2 verification,
+    or update `LAST_RESULT`.
+  - Reviewer Averroes caught one P1 before smoke: `packages/mcp-server/src/index.ts`
+    exposed the public MCP `call_template` schema as `{name,params}` and
+    did not forward `idempotency_key`. Fixed by adding the public tool
+    field, forwarding it into `callTemplate(...)`, updating the tool
+    description, and adding `scripts/__tests__/mcp-index.test.mjs` as a
+    static guard.
+  - Static gates: focused suite 83/83, full `npm test` 309/309,
+    `npm run build`, `npm run check:manifest`,
+    `npm run check:error-codes-fresh`, and `git diff --check` all
+    green.
+  - Live REAPER smoke passed with run id `slice14-1782815129961`; queue
+    `/Users/Zhuanz/Library/Application Support/Streetlight/queue`;
+    REAPER `7.71/macOS-arm64`; user preflight showed
+    `bridge starting (generation 1)`, `loaded error_codes (22 codes)`,
+    and `bridge ready (generation 1)`.
+  - S0/S1 passed: `ping` connected; `list_templates` returned exactly
+    11 templates with no new idempotency metadata fields,
+    `region_create.expectedDelta.fields[]` stayed
+    `[name,pos,rgnend]`, and `render_region` still had no
+    `expectedDelta`.
+  - S2 no-key baseline passed:
+    `track_create` produced
+    `guid:{75329121-6A9F-BB4C-AEA2-EB0ABB8EF522}` and
+    `media_import track_id:"last_result:track:0"` produced
+    `guid:{C4E22D92-4022-6644-AF9B-0EF1C7EFDFB0}`.
+  - S3/S4 dedup passed: key
+    `slice14-1782815129961-pitch-once` replayed the first
+    `item_pitch` inner result; a verifier probe proved pitch remained
+    `-3` and a deliberate `-6` probe returned `VERIFY_FAILED`.
+    Key `slice14-1782815129961-typed-error` replayed identical
+    `ITEM_NOT_FOUND` envelopes for an invalid item GUID.
+  - S5 `LAST_RESULT` replay preservation passed in both relevant
+    buckets: post-replay `item_rate last_result:item:0` succeeded, and
+    post-replay/no-key `track_rename last_result:track:0` succeeded on
+    track `guid:{3BF45FDC-4DB6-FE44-941B-D9A9742969DE}`.
+  - S6/S7 carve-outs passed: `render_region` with key
+    `slice14-1782815129961-render-carveout` executed twice after the
+    first WAV was deleted, returned only
+    `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/slice14-1782815129961/slice14-1782815129961-render-region.wav`,
+    and left no `.RPP` / `.RPP-bak` sidecars. `ping` and
+    `get_state(project)` accepted `idempotency_key` on the wire and did
+    not replay.
+  - S8/S9 regressions passed: different keys executed independently;
+    no-key behavior remained normal; representative
+    `item_move`, `item_trim`, `item_fade`, `item_duplicate`,
+    `track_create` reuse, `media_import`, `region_create` explicit +
+    item-mode, error-code probes, `get_state` include/regression, and
+    render artifact checks all passed.
+  - Cleanup passed: temp render dir was deleted; queue ended with
+    `pending=0`, `running=0`, `done=0`; only `bridge_owner` remained.
+- **Kernel hardening Slice 13 ✅ live-smoked / committed and pushed
   (2026-06-30).** Scope from
   `docs/plans/SLICE_13_ARCHITECT_PLAN.md`:
   - `region_create.expectedDelta.fields[]` expands from one field to
@@ -1001,11 +1060,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit Slice 13."** Slice 13 is code-done, static-green,
-       reviewer-pass, and REAPER live-smoked locally. Only commit/push
-       if the user explicitly asks; versioning remains out-of-band.
+   (a) **"Continue Slice 14."** Static gates and REAPER live smoke are
+       green. Request reviewer pass if still needed. Only commit/push if
+       the user explicitly asks; versioning remains out-of-band.
 
-   (b) **"Codex/reviewer found a bug in Slice 13 or earlier."** Locked
+   (b) **"Codex/reviewer found a bug in Slice 14 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -1014,7 +1073,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** Slice 13 static baseline is
+2. **Tests + build baseline this window:** Slice 14 code-done baseline is
+   focused suite 83/83, full `npm test` 309/309, build / manifest /
+   error-code / diff-check clean. REAPER smoke
+   `slice14-1782815129961` is green on `7.71/macOS-arm64` and cleaned
+   the queue to `pending=0`, `running=0`, `done=0`. Slice 13 baseline was
    `npm test` 293/293,
    `npm run build` clean, `npm run check:manifest` green,
    `npm run check:error-codes-fresh` green, `git diff --check`

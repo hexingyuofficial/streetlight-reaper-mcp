@@ -22,6 +22,12 @@ import type { FileQueueClient } from "../transport/file-queue.js";
 export const CallTemplateInput = z.object({
   name: z.string().min(1),
   params: z.unknown().optional(),
+  idempotency_key: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[\x20-\x7e]+$/, "ASCII printable only, no control bytes")
+    .optional(),
 });
 export type CallTemplateInput = z.infer<typeof CallTemplateInput>;
 
@@ -39,6 +45,8 @@ export type CallTemplateInput = z.infer<typeof CallTemplateInput>;
  */
 export const DEFAULT_CALL_TEMPLATE_TIMEOUT_MS = 5000;
 
+let warnedRenderRegionDedupCarveOut = false;
+
 /**
  * MCP-facing wrapper for `call_template`.
  *
@@ -54,7 +62,8 @@ export const DEFAULT_CALL_TEMPLATE_TIMEOUT_MS = 5000;
  *   4. `params` must pass the template's registered Zod schema → otherwise
  *      `PARAMS_INVALID` is returned WITHOUT touching the queue.
  *   5. Only then do we write a wire command with kind="template",
- *      name=<template>, params=<validated params>.
+ *      name=<template>, params=<validated params>. A caller-provided
+ *      `idempotency_key` rides along here; the bridge owns dedup semantics.
  *
  * The result the bridge ships back is the locked `CallTemplateResult` shape.
  * No descriptor data ever rides along — see docs/RESPONSE_BUDGET.md.
@@ -63,7 +72,8 @@ export const DEFAULT_CALL_TEMPLATE_TIMEOUT_MS = 5000;
  * if the bridge has already picked up the command file (moved it to
  * `running/`) when our timeout fires, REAPER may still apply the mutation
  * but we will return `BRIDGE_NOT_RUNNING`. Agents must NOT auto-retry
- * mutating templates on this error code — re-running can double-apply. The
+ * mutating templates on this error code unless they supplied an
+ * `idempotency_key` for the original logical operation. Without a key, the
  * recovery path is to call `get_state` and inspect actual state.
  */
 export async function callTemplate(
@@ -111,10 +121,25 @@ export async function callTemplate(
   const effectiveTimeout =
     timeoutMs ?? def.timeoutMs ?? DEFAULT_CALL_TEMPLATE_TIMEOUT_MS;
 
+  if (
+    shape.data.idempotency_key !== undefined &&
+    def.name === "render_region" &&
+    !warnedRenderRegionDedupCarveOut
+  ) {
+    warnedRenderRegionDedupCarveOut = true;
+    process.stderr.write(
+      `[streetlight-mcp] render_region is a dedup carve-out; idempotency_key ignored by bridge\n`,
+    );
+  }
+
   return client.send<CallTemplateResult>(
     "template",
     params.data,
-    { timeoutMs: effectiveTimeout, expectedDelta: toWireExpectedDelta(def.expectedDelta) },
+    {
+      timeoutMs: effectiveTimeout,
+      expectedDelta: toWireExpectedDelta(def.expectedDelta),
+      idempotencyKey: shape.data.idempotency_key,
+    },
     def.name,
   );
 }

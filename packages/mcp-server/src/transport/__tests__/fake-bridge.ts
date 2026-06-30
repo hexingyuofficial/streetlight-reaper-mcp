@@ -21,11 +21,14 @@ export interface ParsedCommand {
   name?: string;
   params: unknown;
   expected_delta?: unknown;
+  idempotency_key?: string;
   created_at: string;
 }
 
 export interface FakeBridgeOptions {
   malformed?: boolean;
+  /** Test-only model of Slice 14 bridge-level template deduplication. */
+  dedupTemplates?: boolean;
 }
 
 export interface FakeBridge {
@@ -57,6 +60,7 @@ export function startFakeBridge(
   const seen: ParsedCommand[] = [];
   let stopped = false;
   let timer: NodeJS.Timeout | null = null;
+  const dedup = new Map<string, FakeBridgeResponse>();
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
@@ -79,7 +83,18 @@ export function startFakeBridge(
         if (opts.malformed) {
           await fs.writeFile(tmpDone, "{ this is not json", "utf8");
         } else {
-          const response = responseFor(cmd);
+          const key = cmd.idempotency_key;
+          const canDedup =
+            opts.dedupTemplates === true &&
+            cmd.kind === "template" &&
+            cmd.name !== "render_region" &&
+            typeof key === "string" &&
+            key.length > 0;
+          const cached = canDedup ? dedup.get(key) : undefined;
+          const response = cached ?? responseFor(cmd);
+          if (canDedup && cached === undefined && !isInternalError(response)) {
+            dedup.set(key, response);
+          }
           const envelope = {
             id: cmd.id,
             ...response,
@@ -106,4 +121,8 @@ export function startFakeBridge(
       await new Promise((r) => setTimeout(r, 10));
     },
   };
+}
+
+function isInternalError(response: FakeBridgeResponse): boolean {
+  return response.ok === false && response.error.code === "INTERNAL_ERROR";
 }

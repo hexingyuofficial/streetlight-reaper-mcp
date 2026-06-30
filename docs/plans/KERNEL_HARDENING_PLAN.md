@@ -255,6 +255,17 @@ agent 必须 `get_state` 对账，禁止盲目重试」。可用但脆。
 - 同一 key 发两次 `item_pitch` → 项目态只改一次，第二次回放首次结果。
 - 不同 key 的相同操作 → 各自执行（符合 `media_import` 非幂等语义）。
 
+2026-06-30 note: Slice 14 implements H4 Phase 1. `call_template`
+accepts a caller-provided `idempotency_key` (1-128 ASCII-printable
+chars) and threads it to the bridge. The bridge keeps an in-memory
+FIFO `DEDUP` table capped at 256 entries. Eligible synchronous
+templates replay the stored inner envelope on a key hit with fresh
+outer `id` / `completed_at`; successes and typed errors are stored,
+`INTERNAL_ERROR` is not. `render_region` and read paths are explicit
+carve-outs. The table is not persisted across bridge reload; deferred
+template replay, persistence, auto-keying, and key/param conflict
+diagnostics remain v0.2+.
+
 ---
 
 ### H5 — 能力描述符富化（单一真相源 + 生成入口）

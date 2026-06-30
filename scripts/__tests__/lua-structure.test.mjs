@@ -204,6 +204,48 @@ describe("Lua bridge structure", () => {
     expect(ownerIndex).toBeLessThan(processIndex);
   });
 
+  it("wires Slice 14 idempotency through process_one without touching read or deferred paths", async () => {
+    const bridge = await readRepoFile("reaper/streetlight_bridge.lua");
+
+    expect(bridge).toMatch(/local DEDUP_CAP = 256/);
+    expect(bridge).toMatch(/local DEDUP = {}/);
+    expect(bridge).toMatch(/local DEDUP_ORDER = {}/);
+    expect(bridge).toMatch(/function dedup_get\(key\)/);
+    expect(bridge).toMatch(/function dedup_put\(key, inner\)/);
+    expect(bridge).toMatch(/function dedup_eligible\(cmd\)/);
+    expect(bridge).toMatch(/cmd\.name ~= "render_region"/);
+    expect(bridge).toMatch(/dedup_inner_is_internal_error/);
+    expect(bridge).toMatch(/dedup replay key=/);
+
+    const processIndex = bridge.indexOf("local function process_one()");
+    const decodeIndex = bridge.indexOf("local cmd = cmd_or_err", processIndex);
+    const getIndex = bridge.indexOf("dedup_get(cmd.idempotency_key)", decodeIndex);
+    const dispatchIndex = bridge.indexOf("result = dispatch(cmd)", decodeIndex);
+    const putIndex = bridge.indexOf("dedup_put(cmd.idempotency_key, inner)", dispatchIndex);
+    expect(decodeIndex).toBeGreaterThan(processIndex);
+    expect(getIndex).toBeGreaterThan(decodeIndex);
+    expect(getIndex).toBeLessThan(dispatchIndex);
+    expect(putIndex).toBeGreaterThan(dispatchIndex);
+
+    const pingBody = bridge.slice(
+      bridge.indexOf("function DISPATCH.ping"),
+      bridge.indexOf("-- Scopes recognized by get_state"),
+    );
+    expect(pingBody).not.toMatch(/DEDUP|dedup_/);
+
+    const getStateBody = bridge.slice(
+      bridge.indexOf("function DISPATCH.get_state"),
+      bridge.indexOf("local function template_error_envelope"),
+    );
+    expect(getStateBody).not.toMatch(/DEDUP|dedup_/);
+
+    const deferredBody = bridge.slice(
+      bridge.indexOf("local function tick_deferred()"),
+      bridge.indexOf("function DISPATCH.template"),
+    );
+    expect(deferredBody).not.toMatch(/DEDUP|dedup_/);
+  });
+
   it("wires Slice 06 field verification after count checks and before LAST_RESULT finalize", async () => {
     const [bridge, verify] = await Promise.all([
       readRepoFile("reaper/streetlight_bridge.lua"),
