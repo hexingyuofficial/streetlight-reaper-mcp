@@ -62,7 +62,21 @@ export const mediaImportDefinition: CapabilityDefinition<
   entity_kind: "item",
   undo_flags: ["ITEMS", "TRACKCFG"],
   idempotent: false,
-  expectedDelta: { count: "any", creates: true },
+  expectedDelta: {
+    count: "any",
+    creates: true,
+    // Slice 11: count:"any" semantic = first-item verify
+    // (changed_ids[1] only); multi-item paths only have the first item
+    // validated. See docs/TEMPLATE_SPEC.md.
+    fields: [
+      {
+        scope: "item",
+        field: "D_POSITION",
+        paramPath: "position",
+        tolerance: 1e-6,
+      },
+    ],
+  },
   params: MediaImportParams,
   result: MediaImportResult,
   examples: [

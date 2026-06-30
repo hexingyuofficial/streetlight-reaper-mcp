@@ -234,17 +234,29 @@ function validateExpectedDeltaFields(
       `Capability ${name} expectedDelta.fields cannot coexist with deletes`,
     );
   }
-  if (
-    (expectedDelta.creates || expectedDelta.maybeCreates) &&
-    (typeof expectedDelta.count !== "number" ||
+  if (expectedDelta.maybeCreates) {
+    if (
+      typeof expectedDelta.count !== "number" ||
       !Number.isFinite(expectedDelta.count) ||
       Math.floor(expectedDelta.count) !== expectedDelta.count ||
-      expectedDelta.count < 1)
-  ) {
-    const mode = expectedDelta.creates ? "creates:true" : "maybeCreates:true";
-    throw new Error(
-      `Capability ${name} expectedDelta.fields with ${mode} requires numeric count >= 1`,
-    );
+      expectedDelta.count < 1
+    ) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields with maybeCreates:true requires numeric count >= 1`,
+      );
+    }
+  }
+  if (expectedDelta.creates) {
+    const hasValidNumericCount =
+      typeof expectedDelta.count === "number" &&
+      Number.isFinite(expectedDelta.count) &&
+      Math.floor(expectedDelta.count) === expectedDelta.count &&
+      expectedDelta.count >= 1;
+    if (expectedDelta.count !== "any" && !hasValidNumericCount) {
+      throw new Error(
+        `Capability ${name} expectedDelta.fields with creates:true requires count "any" or numeric >= 1`,
+      );
+    }
   }
 
   const seen = new Set<string>();

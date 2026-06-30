@@ -409,6 +409,39 @@ describe("CapabilityRegistry", () => {
     });
   });
 
+  it("accepts creates expectedDelta field checks with count:any as first-item verify", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "media_import_checked",
+      description: "media import checked",
+      pack: "test",
+      risk: "filesystem",
+      mutates: true,
+      undoable: true,
+      idempotent: false,
+      entity_kind: "item",
+      undo_flags: ["ITEMS", "TRACKCFG"],
+      expectedDelta: {
+        count: "any",
+        creates: true,
+        fields: [
+          { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+        ],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    expect(reg.list()[0]?.expectedDelta).toEqual({
+      count: "any",
+      creates: true,
+      fields: [
+        { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+      ],
+    });
+  });
+
   it("accepts maybeCreates expectedDelta field checks with a positive numeric count", () => {
     const reg = new CapabilityRegistry();
     reg.register({
@@ -599,18 +632,11 @@ describe("CapabilityRegistry", () => {
     ).toThrow(/cannot coexist with deletes/);
     expect(() =>
       registerWithExpectedDelta({
-        count: "any",
-        creates: true,
-        fields: [{ scope: "item", field: "D_POSITION", paramPath: "position" }],
-      }),
-    ).toThrow(/with creates:true requires numeric count >= 1/);
-    expect(() =>
-      registerWithExpectedDelta({
         count: 0,
         creates: true,
         fields: [{ scope: "item", field: "D_POSITION", paramPath: "position" }],
       }),
-    ).toThrow(/with creates:true requires numeric count >= 1/);
+    ).toThrow(/with creates:true requires count "any" or numeric >= 1/);
     expect(() =>
       registerWithExpectedDelta({
         count: "any",

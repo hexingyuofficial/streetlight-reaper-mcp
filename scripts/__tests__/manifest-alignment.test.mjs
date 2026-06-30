@@ -249,15 +249,13 @@ return { templates = {
       ]);
     const lua = parseManifestLua(SAMPLE_MANIFEST);
 
-    expect(diffManifestAlignment(makeTs(1), lua)).not.toContain(
-      "EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires numeric count >= 1",
-    );
-    expect(diffManifestAlignment(makeTs(3), lua)).not.toContain(
-      "EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires numeric count >= 1",
-    );
+    for (const count of [1, 3]) {
+      const errors = diffManifestAlignment(makeTs(count), lua);
+      expect(errors.filter((error) => error.startsWith("EXPECTED_DELTA_INVALID:item_pitch"))).toEqual([]);
+    }
   });
 
-  it("rejects fields with creates:true and count:any", () => {
+  it("allows fields with creates:true and count:any", () => {
     const ts = new Map([
       [
         "item_pitch",
@@ -279,8 +277,35 @@ return { templates = {
     const lua = parseManifestLua(SAMPLE_MANIFEST);
     const errors = diffManifestAlignment(ts, lua);
 
+    expect(errors).not.toContain(
+      'EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires count "any" or numeric >= 1',
+    );
+  });
+
+  it("rejects fields with creates:true and non-positive count", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 0,
+            creates: true,
+            fields: [
+              { scope: "item", field: "D_POSITION", paramPath: "position" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
     expect(errors).toContain(
-      "EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires numeric count >= 1",
+      'EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires count "any" or numeric >= 1',
     );
   });
 

@@ -289,6 +289,7 @@ back the changed entity after the structural check passes but before
 | `item_trim` | `item` | `D_LENGTH` | `params.length` |
 | `item_trim` | `take` | `D_STARTOFFS` | `params.start_offset` when supplied |
 | `item_duplicate` | `item` | `D_POSITION` | `params.position` on the newly-created item |
+| `media_import` | `item` | `D_POSITION` | `params.position` on `changed_ids[1]` (first-item verify) |
 | `track_create` | `track` | `P_NAME` | `params.name` on either created or reused track |
 | `track_rename` | `track` | `P_NAME` | `params.name` |
 
@@ -326,17 +327,19 @@ named by `changed_ids[1]`; for `item_duplicate` that is the new
 `guid:{...}` item returned by the handler, so the existing item-scope
 reader can compare `D_POSITION` against `params.position`.
 
-The D5 relaxation is intentionally narrow. `fields[]` still cannot
-coexist with `maybeCreates:true`, `deletes:true`, or `creates:true`
-with `count:"any"`. Region field verification is also still closed:
-`fields[].scope` remains `take | item | track`, so `region_create`
-cannot opt into fields until a future slice adds region ref parsing and
-a region field reader.
+The D5 relaxation is intentionally incremental. Slice 09 covers only
+numeric-count `creates:true` descriptors. Slice 10 covers numeric-count
+`maybeCreates:true` descriptors. Slice 11 covers `creates:true` with
+`count:"any"` as first-item verification. `fields[]` still cannot
+coexist with `deletes:true`. Region field verification is also still
+closed: `fields[].scope` remains `take | item | track`, so
+`region_create` cannot opt into fields until a future slice adds region
+ref parsing and a region field reader.
 
-Field verification is intentionally not global yet. `media_import`,
-`region_create`, and `render_region` remain Slice 11+ work.
-`render_region` still omits `expectedDelta` in v0.1 because it is
-deferred and returns an artifact path, not a project-entity ref.
+Field verification is intentionally not global yet. `region_create` and
+`render_region` remain future work. `render_region` still omits
+`expectedDelta` in v0.1 because it is deferred and returns an artifact
+path, not a project-entity ref.
 
 Slice 10 starts field verification on maybeCreates-style templates.
 `expectedDelta.fields[]` may coexist with `maybeCreates:true` only when
@@ -349,11 +352,25 @@ guaranteed because the handler found the existing track by that name,
 so the field check is a pipeline proof-of-life rather than a new
 semantic assertion.
 
-`count:"any"` remains closed for field verification, so `media_import`
-cannot opt in until a future slice decides whether multi-item imports
-verify the first changed item, every changed item, or a different
-shape. Region scope also remains closed until a future slice adds
-region ref parsing and a region field reader.
+Slice 11 starts field verification on `creates:true` +
+`count:"any"` templates. The registry allows this combination only for
+creates-style descriptors; `maybeCreates:true` still requires a finite
+positive numeric count. Runtime semantics are intentionally explicit:
+for `count:"any"` plus `fields[]`, the bridge verifies only
+`changed_ids[1]`. It does not loop over every changed id.
+
+`media_import` uses that first-item verification contract for item
+`D_POSITION ← params.position`, tolerance `1e-6`. For the common
+single-item import, that is a full postcondition check. If REAPER ever
+returns multiple imported items from one `media_import` call, Slice 11
+only proves the first returned item landed at the requested position;
+the remaining changed ids are still reported in the normal success
+envelope but are not field-checked. If that field check fails, the
+imported item may already exist in the project and `LAST_RESULT` is not
+updated, matching the existing `VERIFY_FAILED` recovery contract.
+
+Region scope remains closed until a future slice adds region ref
+parsing and a region field reader.
 
 ## Reference Resolution (refs.lua)
 

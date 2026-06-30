@@ -152,6 +152,14 @@ field verification on track `P_NAME`. `media_import` / `count:"any"`
 stays Slice 11+, and `region_create` / region-scope field readers stay
 Slice 12+.
 
+2026-06-30 note: Slice 11 extends field-level verification to
+`media_import` and makes the third narrow D5 relaxation:
+`expectedDelta.fields[]` may coexist with `creates:true` plus
+`count:"any"`. Runtime verification stays bounded by checking only
+`changed_ids[1]` (first-item verify), with item `D_POSITION` compared to
+`params.position` at tolerance `1e-6`. `region_create` / region-scope
+field readers stay Slice 12+.
+
 **触及文件**：
 - `packages/core/src/registry.ts`（`expectedDelta` 字段）
 - `packages/core/src/errors.ts`（`VERIFY_FAILED`）

@@ -91,11 +91,21 @@ describe("listTemplates", () => {
         { scope: "track", field: "P_NAME", paramPath: "name" },
       ],
     });
+    const mediaImport = result.result.templates.find((t) => t.name === "media_import");
+    expect(mediaImport?.expectedDelta).toEqual({
+      count: "any",
+      creates: true,
+      fields: [
+        { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+      ],
+    });
+    const regionCreate = result.result.templates.find((t) => t.name === "region_create");
+    expect(regionCreate?.expectedDelta).toEqual({ count: 1, creates: true });
     const renderRegion = result.result.templates.find((t) => t.name === "render_region");
     expect(renderRegion).not.toHaveProperty("expectedDelta");
   });
 
-  it("exposes field-check metadata on the eight covered templates", () => {
+  it("exposes field-check metadata on the nine covered templates", () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);
     const result = listTemplates(registry);
@@ -117,6 +127,10 @@ describe("listTemplates", () => {
       ],
       [
         "item_duplicate",
+        [{ scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 }],
+      ],
+      [
+        "media_import",
         [{ scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 }],
       ],
       [
@@ -189,6 +203,26 @@ describe("listTemplates", () => {
       ],
     });
     const field = itemDuplicate?.expectedDelta?.fields?.[0];
+    expect(field).not.toHaveProperty("optional");
+    expect(field).not.toHaveProperty("nullable");
+  });
+
+  it("keeps media_import field metadata free of optional and nullable", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const mediaImport = result.result.templates.find((t) => t.name === "media_import");
+    expect(mediaImport?.expectedDelta).toEqual({
+      count: "any",
+      creates: true,
+      fields: [
+        { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+      ],
+    });
+    const field = mediaImport?.expectedDelta?.fields?.[0];
     expect(field).not.toHaveProperty("optional");
     expect(field).not.toHaveProperty("nullable");
   });

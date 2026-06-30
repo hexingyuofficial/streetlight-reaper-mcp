@@ -185,7 +185,16 @@ describe("callTemplate", () => {
           ],
         },
       ],
-      ["media_import", { count: "any", creates: true }],
+      [
+        "media_import",
+        {
+          count: "any",
+          creates: true,
+          fields: [
+            { scope: "item", field: "D_POSITION", param_path: "position", tolerance: 1e-6 },
+          ],
+        },
+      ],
       [
         "track_create",
         {
@@ -277,6 +286,57 @@ describe("callTemplate", () => {
       await callTemplate(client, registry, {
         name: "item_duplicate",
         params: { item_id: "selected:0", track_id: "track:Variations", position: 1 },
+      });
+      const fields = bridge.seen.at(-1)?.expected_delta?.fields;
+      expect(fields).toEqual([
+        {
+          scope: "item",
+          field: "D_POSITION",
+          param_path: "position",
+          tolerance: 1e-6,
+        },
+      ]);
+      expect(fields?.[0]).not.toHaveProperty("optional");
+      expect(fields?.[0]).not.toHaveProperty("nullable");
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: media_import sends creates:any plus a first-item D_POSITION field descriptor", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{IMPORT}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "media_import",
+        params: { path: "/System/Library/Sounds/Ping.aiff", track_id: "track:Imports", position: 3.5 },
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: "any",
+        creates: true,
+        fields: [
+          {
+            scope: "item",
+            field: "D_POSITION",
+            param_path: "position",
+            tolerance: 1e-6,
+          },
+        ],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: media_import D_POSITION descriptor omits optional and nullable", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{IMPORT}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "media_import",
+        params: { path: "/System/Library/Sounds/Ping.aiff", track_id: "track:Imports", position: 0 },
       });
       const fields = bridge.seen.at(-1)?.expected_delta?.fields;
       expect(fields).toEqual([

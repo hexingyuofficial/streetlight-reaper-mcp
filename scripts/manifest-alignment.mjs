@@ -168,17 +168,29 @@ function validateExpectedDeltaFields(name, expected) {
       `EXPECTED_DELTA_INVALID:${name}: fields cannot coexist with deletes`,
     );
   }
-  if (
-    (expected.creates || expected.maybeCreates) &&
-    (typeof expected.count !== "number" ||
+  if (expected.maybeCreates) {
+    if (
+      typeof expected.count !== "number" ||
       !Number.isFinite(expected.count) ||
       Math.floor(expected.count) !== expected.count ||
-      expected.count < 1)
-  ) {
-    const mode = expected.creates ? "creates:true" : "maybeCreates:true";
-    errors.push(
-      `EXPECTED_DELTA_INVALID:${name}: fields with ${mode} requires numeric count >= 1`,
-    );
+      expected.count < 1
+    ) {
+      errors.push(
+        `EXPECTED_DELTA_INVALID:${name}: fields with maybeCreates:true requires numeric count >= 1`,
+      );
+    }
+  }
+  if (expected.creates) {
+    const hasValidNumericCount =
+      typeof expected.count === "number" &&
+      Number.isFinite(expected.count) &&
+      Math.floor(expected.count) === expected.count &&
+      expected.count >= 1;
+    if (expected.count !== "any" && !hasValidNumericCount) {
+      errors.push(
+        `EXPECTED_DELTA_INVALID:${name}: fields with creates:true requires count "any" or numeric >= 1`,
+      );
+    }
   }
 
   const seen = new Set();

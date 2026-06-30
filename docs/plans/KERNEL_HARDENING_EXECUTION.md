@@ -153,6 +153,14 @@ together for the first time; full quit/reopen before loading
 `start_bridge.lua` prevents stale bridge chunks from claiming queue
 files with older manifest metadata.
 
+2026-06-30 note: Slice 11 implements `media_import` field postchecks
+without changing `verify.lua`. It is still a REAPER-restart slice
+because the wire shape now sends `creates:true`, `count:"any"`, and
+`fields[]` together for the first time; full quit/reopen before loading
+`start_bridge.lua` prevents stale bridge chunks from claiming queue
+files with older manifest metadata. The runtime intentionally verifies
+only `changed_ids[1]` for `count:"any"` descriptors.
+
 ### 细化点（这步设计难点都在这里）
 - **不要做任意字段的全量 before/after diff**——太贵且 before 不可知（handler 内部才解析
   出受影响实体）。校验只覆盖两类**可知后置条件**：
