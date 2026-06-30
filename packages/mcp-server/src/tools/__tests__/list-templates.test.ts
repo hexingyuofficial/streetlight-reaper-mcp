@@ -127,7 +127,7 @@ describe("listTemplates", () => {
     expect(renderRegion).not.toHaveProperty("expectedDelta");
   });
 
-  it("exposes field-check metadata on the ten covered templates", () => {
+  it("exposes field-check metadata on the eleven covered templates", () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);
     const result = listTemplates(registry);
@@ -196,6 +196,10 @@ describe("listTemplates", () => {
       [
         "track_create",
         [{ scope: "track", field: "P_NAME", paramPath: "name" }],
+      ],
+      [
+        "track_color",
+        [{ scope: "track", field: "I_CUSTOMCOLOR_HEX", paramPath: "color", nullable: true }],
       ],
       [
         "region_create",
@@ -325,7 +329,7 @@ describe("listTemplates", () => {
     for (const template of result.result.templates) {
       const fields = template.expectedDelta?.fields ?? [];
       for (const field of fields) {
-        if (template.name === "item_fade") {
+        if (template.name === "item_fade" || template.name === "track_color") {
           expect(field).toHaveProperty("nullable", true);
         } else {
           expect(field).not.toHaveProperty("nullable");

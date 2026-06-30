@@ -1,24 +1,17 @@
-# Next Window Briefing — 2026-06-30
+# Next Window Briefing — 2026-07-01
 
 Use this as the first read after a context reset. It is the current truth
-after Slice 18.
+after Slice 19 live smoke.
 
 ## Snapshot
 
 - Repo: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
-- Branch: `main`; latest pushed commit is Slice 14:
-  `56c57cb kernel-hardening: slice 14 idempotency tokens`
-- Local commits ahead of origin:
-  - Slice 15: `39bf940 kernel-hardening: slice 15 render dedup`
-  - Slice 16: `0996b5b kernel-hardening: slice 16 template authoring
-    guide + lint`
-  - Slice 16 reviewer follow-up: `45e0193 docs: follow up slice 16
-    authoring review`
-  - Slice 17: `05f297c kernel-hardening: slice 17 define template helper`
-  - Slice 17 reviewer follow-up: `8f0b505 docs: follow up slice 17 review`
-- Slice 18 is the current uncommitted working tree. It is code-done and
-  static-green, but not committed yet.
+- Branch: `main`; latest pushed checkpoint in this local view is Slice
+  18: `88b0edf kernel-hardening: slice 18 dry-run template scaffolder`
+- Slice 19 is the current uncommitted working tree. It is static-green
+  and live-smoked on REAPER `7.71/macOS-arm64`; H6's basic loop is
+  closed. Do not commit or push until the user explicitly asks.
 - Public name: OpenReaper. Internal code paths and bridge names still use
   Streetlight.
 - Do not commit, push, reset, branch, or rewrite history unless the user
@@ -27,98 +20,133 @@ after Slice 18.
   explicitly makes an exception.
 - Do not stage or touch the nested ignored `style-memory-mcp/` project.
 
-## Latest Verified Commit
-
-Slice 14 is the most recent pushed commit (`56c57cb`).
-
-Slice 15 is locally committed at `39bf940` (live-smoked, not pushed). It
-extended H4 to deferred `render_region`.
-
-Slice 16 is locally committed at `0996b5b` and its docs follow-up at
-`45e0193` (static-green, not pushed). It added the H6 Phase 0 authoring
-guide and lint.
-
-Slice 17 is locally committed at `05f297c` with reviewer follow-up at
-`8f0b505` (static-green, not pushed). It added the H6 Phase 1
-`defineTemplate({ ... })` helper and migrated two pilot templates.
-
-Slice 18 is not committed yet. It is the current working tree.
-
 ## Current Slice
 
-Slice 18 implements **H6 Phase 2 — Dry-Run Template Scaffolder**.
+Slice 19 implements **H6 closure — first real template from the
+scaffolder workflow**.
 
 What landed:
 
-- `scripts/scaffold-template.mjs` exports pure helpers and a CLI entry.
-- `package.json` adds `npm run scaffold:template`.
-- The CLI requires `--dry-run`, reads existing template source slugs, and
-  refuses collisions before printing a plan.
-- Supported descriptor surface is deliberately narrow:
-  - `--pack core` only;
-  - `--entity-kind item|track|region`;
-  - `--risk read|write_safe|filesystem`;
-  - explicit `--undoable`;
-  - explicit `--idempotent`;
-  - `--undo-flags` required when `--undoable true` and rejected when
-    `--undoable false`.
-- Unsupported this slice: render templates, non-core packs,
-  destructive/unsafe_eval risk, JSON machine output, overwrite/write mode,
-  or any real template generation.
-- The formatted plan prints normalized metadata, would-create paths,
-  manual-modify paths, TS skeleton using `defineTemplate(...)`, Lua handler
-  TODO, `manifest.lua` TODO, registry TODO, and MCP-server test TODO.
-- The output warns that no files were written and TODO skeletons are not
-  lint-clean until filled.
-- `scripts/__tests__/scaffold-template.test.mjs` adds 19 tests around
-  parsing, validation, output shape, deterministic paths, manifest bitmask
-  snippets, and unsupported cases.
-- `docs/TEMPLATE_AUTHORING.md` documents the dry-run workflow.
-- `docs/plans/SLICE_18_ARCHITECT_PLAN.md`, H6 master plan, and execution
-  notes record the slice.
+- New template: `track_color`
+- New file:
+  `packages/mcp-server/src/templates/track-color.ts`
+- Registered in:
+  `packages/mcp-server/src/templates/index.ts`
+- New test file:
+  `packages/mcp-server/src/tools/__tests__/track-color.test.ts`
+- Runtime handler added in:
+  `reaper/packs/core/templates/track.lua`
+- Manifest entry added in:
+  `reaper/packs/core/manifest.lua`
+- Verify reader added in:
+  `reaper/packs/core/verify.lua`
+- Metadata/list regression updated in:
+  `packages/mcp-server/src/tools/__tests__/list-templates.test.ts`
+- Lua structure regression updated in:
+  `scripts/__tests__/lua-structure.test.mjs`
 
-What did NOT change:
+`track_color` contract:
 
-- No Lua runtime behavior.
-- No `streetlight_bridge.lua`, `verify.lua`, `manifest.lua` runtime entry,
-  `refs.lua`, `undo.lua`, or handler implementation.
-- No registry registration for a new template.
-- No MCP tool surface change.
-- No `CapabilityDefinition` contract change.
-- No error codes, wire fields, or template count change.
-- No bridge restart required.
+- `entity_kind: "track"`
+- `risk: "write_safe"`
+- `undoable: true`
+- `undo_flags: ["TRACKCFG"]`
+- `idempotent: true`
+- params: `{ track_id: string, color: "#RRGGBB" | null }`
+- `color:null` clears custom color.
+- `"#000000"` is black, not clear.
+- TS schema accepts uppercase hex only to keep field verification's
+  string comparison stable.
+
+Runtime behavior:
+
+- Resolves the track before mutation.
+- Parses hex before mutation.
+- Sets custom color using:
+  `SetMediaTrackInfo_Value(track, "I_CUSTOMCOLOR", ColorToNative(r,g,b) | 0x1000000)`
+- Clears using `I_CUSTOMCOLOR = 0`.
+- Returns the changed track GUID.
+
+Verify behavior:
+
+- Adds one narrow synthetic field: `I_CUSTOMCOLOR_HEX`.
+- `I_CUSTOMCOLOR == 0` or missing enabled bit returns `0`.
+- Enabled colors mask off `0x1000000`, use `ColorFromNative`, and return
+  uppercase `#RRGGBB`.
+- This is intentionally not a general transform DSL.
 
 Static status:
 
-- `npm test`: **348/348** green (Slice 17 baseline 329/329 + 19
-  scaffolder tests).
+- `npm test`: **357/357** green.
 - `npm run build`: clean.
-- `npm run check:manifest`: 11 templates aligned.
+- `npm run check:manifest`: 12 templates aligned.
 - `npm run check:error-codes-fresh`: 22 codes fresh.
-- `npm run check:template-authoring`: 11 templates ok.
+- `npm run check:template-authoring`: 12 templates ok.
 - `git diff --check`: clean.
 
 Live smoke:
 
-- Per S18-D8=a, **no REAPER live smoke**. This is CLI/docs-only and
-  bridge-invisible.
+- Passed after a full REAPER quit/reopen and current `start_bridge.lua`
+  load. Console showed generation 1, loaded error codes, and ready line
+  with `track_color`.
+- Smoke stamp: `1782840178741`.
+- Track GUID: `guid:{016B7CED-64A7-1645-9AE2-E6E1547CA447}`.
+- `track_create` created the smoke track; `track_color` succeeded for
+  `#2D9CDB`, `#000000`, and `null`; `track_rename
+  last_result:track:0` hit the same GUID; missing track returned typed
+  `TRACK_NOT_FOUND`.
+- Queue cleanup ended `pending=0`, `running=0`, `done=0`.
+
+## Live Smoke Recipe Already Verified
+
+Precondition:
+
+1. Fully quit REAPER.
+2. Reopen REAPER.
+3. Run current `start_bridge.lua`.
+4. Confirm console shows generation 1, loaded error codes, and ready line
+   with `track_color` in templates.
+
+Smoke recipe:
+
+1. `ping` -> connected.
+2. `list_templates` -> 12 templates; `track_color` has `write_safe`,
+   `track`, `TRACKCFG`, `idempotent:true`, and expectedDelta field
+   `track.I_CUSTOMCOLOR_HEX <- color`.
+3. `track_create` `{ name:"S19 Track Color Smoke", reuse_existing:true }`.
+4. `track_color` `{ track_id:"last_result:track:0", color:"#2D9CDB" }`
+   -> ok, no `VERIFY_FAILED`.
+5. `track_color` `{ track_id:"last_result:track:0", color:"#000000" }`
+   -> ok, proves black != clear.
+6. `track_color` `{ track_id:"last_result:track:0", color:null }`
+   -> ok, proves clear.
+7. `track_rename` `{ track_id:"last_result:track:0", name:"S19 Track Color Smoke Renamed" }`
+   -> ok, proves `LAST_RESULT.tracks` still routes after `track_color`.
+8. Negative: `track_color` with a missing track ref returns
+   `TRACK_NOT_FOUND`, not `INTERNAL_ERROR`.
+
+Pass criteria met:
+
+- All successful calls return locked call_template envelope.
+- `changed_count=1`, `changed_ids[0]` is the same track GUID shape.
+- No `VERIFY_FAILED`.
+- No stale bridge double-owner symptoms.
+- Queue ends clean.
 
 ## Workflow To Continue
 
 1. Read:
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/HANDOFF.md`
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/PROGRESS.md`
-   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/SLICE_18_ARCHITECT_PLAN.md`
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/TEMPLATE_AUTHORING.md`
-2. If reviewer/static-smoke for Slice 18 has not run yet, run it before
-   committing.
-3. Commit only after the user explicitly asks. Push only if the user
-   explicitly asks and it is not inside their work-hours no-push window,
-   unless they make a clear exception.
-4. Natural next step after Slice 18 closes: Slice 19, using the scaffolder
-   to land a real low-risk template (likely `track_color`). Slice 19 will
-   require runtime edits and therefore REAPER live smoke.
+   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/KERNEL_HARDENING_PLAN.md`
+   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/KERNEL_HARDENING_EXECUTION.md`
+2. If asked to close Slice 19, rerun final static gates if desired, then
+   commit. Push only after the user explicitly asks.
+3. If asked for the next work item, request or read the next architect
+   packet. H6's basic loop is closed; further factory automation needs a
+   larger plan.
 
 Keep the invariant sharp: each slice must make the kernel more reliable,
-more testable, or harder to misuse, with a concrete local test (and a live
-REAPER smoke when runtime is affected).
+more testable, or harder to misuse, with a concrete local test and a live
+REAPER smoke when runtime is affected.

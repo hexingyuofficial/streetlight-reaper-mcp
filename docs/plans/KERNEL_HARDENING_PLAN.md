@@ -361,9 +361,18 @@ It validates an explicit descriptor (`name`, `entity_kind`, `risk`,
 `undoable`, `undo_flags`, `idempotent`) and prints deterministic
 TS/Lua/test/manifest/registry TODO skeletons. It does not write files,
 does not support non-core packs, render entity_kind, destructive risk, or
-machine JSON output, and does not add a real template. Slice 19 is the
-first candidate to use the scaffolder for a real low-risk template such
-as `track_color`.
+machine JSON output, and does not add a real template.
+
+2026-07-01 note: Slice 19 is the H6 closure slice — first real template
+from the scaffolder workflow. It lands `track_color` as a low-risk
+track template with params `{ track_id, color }`, where `color` is
+uppercase `#RRGGBB` or `null`. Runtime owns REAPER's native
+`I_CUSTOMCOLOR` integer via `ColorToNative(r,g,b) | 0x1000000`, and
+`verify.lua` adds the narrow synthetic `track.I_CUSTOMCOLOR_HEX` field
+so agents never see platform-native color packing. Static gates are
+green at 357/357, manifest/template-authoring both see 12 templates, and
+REAPER live smoke passed on 7.71/macOS-arm64 with smoke stamp
+`1782840178741`. H6's basic loop is closed.
 
 > **这一项回答了你的问题「内核稳了能不能走捷径追上广度」**：能。H6 之后，REAPER
 > 有限的 ReaScript API 表面可被**批量描述符 → 批量生成 → 批量验证**，每个模板都带

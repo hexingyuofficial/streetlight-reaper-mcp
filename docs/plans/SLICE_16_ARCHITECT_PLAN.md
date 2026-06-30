@@ -261,9 +261,8 @@ sub-slices:
    (`scripts/scaffold-template.mjs`) that emits TS template, Lua handler
    skeleton, vitest suite, and a manifest entry fragment from a single
    descriptor.
-4. Slice 19 (candidate): use the scaffolder to land a real new template
-   (e.g. `track_color`) as an end-to-end proof, including REAPER live
-   smoke.
+4. Slice 19 (later completed): use the scaffolder workflow to land
+   `track_color` as an end-to-end proof, including REAPER live smoke.
 
 Slice 16 is split out first because:
 

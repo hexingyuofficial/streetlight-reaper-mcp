@@ -4,6 +4,7 @@ import { itemMoveDefinition } from "./item-move.js";
 import { itemRateDefinition } from "./item-rate.js";
 import { itemTrimDefinition } from "./item-trim.js";
 import { trackCreateDefinition } from "./track-create.js";
+import { trackColorDefinition } from "./track-color.js";
 import { trackRenameDefinition } from "./track-rename.js";
 import { itemDuplicateDefinition } from "./item-duplicate.js";
 import { itemFadeDefinition } from "./item-fade.js";
@@ -31,6 +32,7 @@ export function registerCoreTemplates(registry: CapabilityRegistry): void {
   registry.register(itemRateDefinition);
   registry.register(itemTrimDefinition);
   registry.register(trackCreateDefinition);
+  registry.register(trackColorDefinition);
   registry.register(trackRenameDefinition);
   registry.register(itemDuplicateDefinition);
   registry.register(itemFadeDefinition);

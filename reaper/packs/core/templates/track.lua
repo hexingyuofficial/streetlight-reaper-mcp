@@ -39,6 +39,13 @@ local function find_track_by_name(name)
   return nil
 end
 
+local function parse_hex_color(hex)
+  if type(hex) ~= "string" then return nil end
+  local r, g, b = hex:match("^#([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])([0-9A-F][0-9A-F])$")
+  if not r then return nil end
+  return tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+end
+
 -- track_create: insert a new track and name it.
 --
 -- `params.index` is the desired insert position; when nil, we append.
@@ -86,6 +93,30 @@ function M.track_rename(params, ctx)
   -- Track name shows in TCP/MCP headers — refresh to make it visible
   -- without the user having to click around.
   reaper.TrackList_AdjustWindows(false)
+
+  return { changed_ids = { get_track_guid_ref(track, errs) } }
+end
+
+-- track_color: resolve a track and set/clear its custom color.
+function M.track_color(params, ctx)
+  local errs = ctx.errs
+  local track, code, msg = ctx.refs.resolve_track(params.track_id, ctx.last_result)
+  if not track then raise(code or errs.TRACK_NOT_FOUND, msg or "Track not found") end
+
+  local applied = 0
+  if params.color ~= ctx.json.null then
+    local r, g, b = parse_hex_color(params.color)
+    if not r then
+      -- TS Zod owns normal shape validation; this is a defensive guard for
+      -- direct bridge calls or stale clients.
+      raise(errs.PARAMS_INVALID, "color must be #RRGGBB or null")
+    end
+    applied = reaper.ColorToNative(r, g, b) | 0x1000000
+  end
+
+  reaper.SetMediaTrackInfo_Value(track, "I_CUSTOMCOLOR", applied)
+  reaper.TrackList_AdjustWindows(false)
+  reaper.UpdateArrange()
 
   return { changed_ids = { get_track_guid_ref(track, errs) } }
 end

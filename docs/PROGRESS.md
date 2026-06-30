@@ -11,36 +11,52 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 18 ✅ code-done / static-green / uncommitted
-working tree (2026-06-30).** Architect packet lives at
-`docs/plans/SLICE_18_ARCHITECT_PLAN.md`; source master plans remain
+**Kernel hardening Slice 19 ✅ live-smoked / static-green /
+uncommitted (2026-07-01).** Architect packet came from the current
+conversation; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
-`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 18 lands **H6 Phase
-2**: a conservative dry-run template scaffolder. New
-`scripts/scaffold-template.mjs` plus `npm run scaffold:template`
-validate an explicit descriptor and print deterministic TS/Lua/test/
-manifest/registry TODO skeletons; they do not write files. Locked
-surface: `--dry-run` required, `--pack core` only,
-`--entity-kind item|track|region`, `--risk read|write_safe|filesystem`,
-explicit `--undoable`, explicit `--idempotent`, and `--undo-flags`
-required exactly when `--undoable true`. Unsupported this slice:
-render templates, destructive/unsafe_eval risk, non-core packs,
-machine JSON output, and any write/overwrite mode.
-`docs/TEMPLATE_AUTHORING.md` now documents the dry-run helper. H6
-master plan / execution notes record Slice 18 and point Slice 19 at
-using the scaffolder for a real low-risk template, likely
-`track_color`. Zero runtime change: no Lua bridge behavior, no manifest
-runtime change, no registry registration, no MCP tool contract change,
-no wire fields, no error codes, no new template. Static gates are
-green: full `npm test` **348/348** (Slice 17 baseline 329/329 + 19
-scaffolder tests), `npm run build` clean, `npm run check:manifest` 11
-templates aligned,
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 19 is the **H6
+closure slice**: use the Slice 18 scaffolder flow to land the first real
+low-risk template, `track_color`. The template accepts
+`{ track_id, color }` where `color` is uppercase `#RRGGBB` or `null`;
+`null` clears the custom color and `#000000` remains black. Runtime uses
+`SetMediaTrackInfo_Value(track, "I_CUSTOMCOLOR", ColorToNative(r,g,b) |
+0x1000000)` and `0` for clear. `verify.lua` adds the narrow synthetic
+track field `I_CUSTOMCOLOR_HEX`, mapping disabled/no custom color to
+`0` and enabled colors back to uppercase `#RRGGBB`, so the agent-facing
+API stays portable instead of exposing REAPER native color integers.
+Template count is now 12. Static gates are green: full `npm test`
+**357/357** (Slice 18 baseline 348/348 + 8 `track_color` fake-bridge
+tests + 1 Lua-structure test), `npm run build` clean,
+`npm run check:manifest` 12 templates aligned,
 `npm run check:error-codes-fresh` 22 codes fresh,
-`npm run check:template-authoring` 11 templates ok, and
-`git diff --check` clean. Per S18-D8=a no REAPER live smoke is
-required because nothing bridge-visible changed. Local commit policy
+`npm run check:template-authoring` 12 templates ok, and
+`git diff --check` clean. REAPER live smoke passed on
+`7.71/macOS-arm64` after full restart: ready line included
+`track_color`, smoke stamp `1782840178741`, track GUID
+`guid:{016B7CED-64A7-1645-9AE2-E6E1547CA447}`. `track_create` created
+the smoke track, `track_color` verified `#2D9CDB`, `#000000`, and
+`null`, `track_rename last_result:track:0` hit the same GUID, missing
+track returned typed `TRACK_NOT_FOUND`, and queue cleanup ended
+`pending=0`, `running=0`, `done=0`. H6's basic loop is now closed:
+authoring guide -> lint -> `defineTemplate` -> dry-run scaffolder ->
+real template -> static gates -> live REAPER smoke. Local commit policy
 unchanged: do not push during the work-hours window unless the user
 explicitly makes an exception.
+
+**Kernel hardening Slice 18 ✅ committed/pushed at `88b0edf`
+(2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_18_ARCHITECT_PLAN.md`; Slice 18 lands **H6 Phase 2**:
+a conservative dry-run template scaffolder. New
+`scripts/scaffold-template.mjs` plus `npm run scaffold:template`
+validate an explicit descriptor and print deterministic TS/Lua/test/
+manifest/registry TODO skeletons; they do not write files. Static gates
+were green: full `npm test` **348/348**, `npm run build` clean,
+`npm run check:manifest` 11 templates aligned,
+`npm run check:error-codes-fresh` 22 codes fresh,
+`npm run check:template-authoring` 11 templates ok, and
+`git diff --check` clean. Per S18-D8=a no REAPER live smoke was
+required because nothing bridge-visible changed.
 
 **Kernel hardening Slice 17 ✅ code-done / static-green / local
 save-point commit `kernel-hardening: slice 17 define template helper`
@@ -2099,8 +2115,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 + Slice 16 + Slice 16 follow-up + Slice 17 ✅ locally committed; Slice 18 ✅ code-done/static-green in working tree | Push only on explicit user exception during work hours |
-| Tests | Slice 18: full 348/348, build / manifest / error-code / template-authoring / diff-check clean; Slice 15 live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Avoid work-hours push unless the user explicitly makes an exception |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-18 ✅ pushed; Slice 19 ✅ live-smoked/static-green, uncommitted | Commit/push only on explicit user ask |
+| Tests | Slice 19: full 357/357, build / manifest / error-code / template-authoring / diff-check clean; manifest/template-authoring see 12 templates; live smoke `1782840178741` green | H6 basic loop closed |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -2153,22 +2169,20 @@ and live-smoked with run id `slice15-1782819968415`. Slice 16 is
 locally committed at `0996b5b`; reviewer Locke's docs-only follow-up is
 locally committed at `45e0193`; Slice 17 is static-green and saved as
 local commit `kernel-hardening: slice 17 define template helper`;
-Slice 17 reviewer follow-up is saved at `8f0b505`; Slice 18 is the
-current uncommitted working tree and is static-green.
+Slice 17 reviewer follow-up is saved at `8f0b505`; Slice 18 is pushed
+at `88b0edf`; Slice 19 is live-smoked/static-green and uncommitted.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Review / close Slice 18.** H6 Phase 2
-   (`scripts/scaffold-template.mjs`) is code-done and static-green in
-   the working tree. It is intentionally CLI/docs-only and has no REAPER
-   smoke requirement. Commit only when the user explicitly asks; do not
-   push during work hours unless the user makes a clear exception.
-2. **Plan Slice 19.** Natural next slice: use the dry-run scaffolder to
-   land a real low-risk template (likely `track_color`) end to end, then
-   live-smoke because runtime Lua/manifest/registry will change.
+1. **Commit Slice 19 / H6 closure if asked.** `track_color` is
+   live-smoked and static-green. H6's basic loop is closed.
+2. **Next planning packet.** The current kernel-hardening H6 thread has
+   reached its documented closure point. Further factory automation
+   (write-mode scaffolder, batch template generation, FX/MIDI/routing
+   packs) should come from the next larger architect plan.
 3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.

@@ -262,6 +262,10 @@ describe("Lua bridge structure", () => {
     expect(verify).toMatch(/GetMediaItemInfo_Value/);
     expect(verify).toMatch(/GetMediaItemTakeInfo_Value/);
     expect(verify).toMatch(/GetSetMediaTrackInfo_String/);
+    expect(verify).toMatch(/I_CUSTOMCOLOR_HEX/);
+    expect(verify).toMatch(/GetMediaTrackInfo_Value\(handle, "I_CUSTOMCOLOR"\)/);
+    expect(verify).toMatch(/ColorFromNative\(native & 0xFFFFFF\)/);
+    expect(verify).toMatch(/#%02X%02X%02X/);
     expect(verify).toMatch(/field\.param_path or field\.paramPath/);
     expect(verify).toMatch(/raw_value == nil and field\.optional == true/);
     expect(verify).toMatch(/item_trim\.start_offset/);
@@ -277,6 +281,27 @@ describe("Lua bridge structure", () => {
     expect(finalizeIndex).toBeGreaterThan(fieldsIndex);
     expect(bridge).toMatch(/verify\.check_fields\([^)]*ctx/s);
     expect(bridge).toMatch(/fields = json\.array\(field_details or {}\)/);
+  });
+
+  it("keeps Slice 19 track color using I_CUSTOMCOLOR with the enabled-color bit", async () => {
+    const [track, manifest] = await Promise.all([
+      readRepoFile("reaper/packs/core/templates/track.lua"),
+      readRepoFile("reaper/packs/core/manifest.lua"),
+    ]);
+
+    expect(track).toMatch(/function M\.track_color\(params, ctx\)/);
+    expect(track).toMatch(/ctx\.refs\.resolve_track\(params\.track_id, ctx\.last_result\)/);
+    expect(track).toMatch(/params\.color ~= ctx\.json\.null/);
+    expect(track).toMatch(/\^#\(\[0-9A-F\]\[0-9A-F\]\)/);
+    expect(track).toMatch(/reaper\.ColorToNative\(r, g, b\) \| 0x1000000/);
+    expect(track).toMatch(/SetMediaTrackInfo_Value\(track, "I_CUSTOMCOLOR", applied\)/);
+    expect(track).toMatch(/TrackList_AdjustWindows\(false\)/);
+    expect(track).toMatch(/get_track_guid_ref\(track, errs\)/);
+
+    expect(manifest).toMatch(/track_color\s*=\s*{/);
+    expect(manifest).toMatch(/handler\s*=\s*track_templates\.track_color/);
+    expect(manifest).toMatch(/undo_flags\s*=\s*undo\.UNDO_STATE_TRACKCFG/);
+    expect(manifest).toMatch(/entity_kind\s*=\s*"track"/);
   });
 
   it("keeps Slice 12/13 region field verification scope without touching refs.lua", async () => {

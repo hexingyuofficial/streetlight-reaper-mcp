@@ -599,8 +599,9 @@ is:
 - Slice 18: dry-run scaffolder CLI (`scripts/scaffold-template.mjs`)
   that validates the minimal descriptor and prints TS/Lua/test/manifest
   TODO skeletons without writing files.
-- Slice 19 (candidate): use the scaffolder to land a real first
-  example (e.g. `track_color`) end to end.
+- Slice 19: use the scaffolder workflow to land a real first example,
+  `track_color`, end to end. Static gates and REAPER live smoke passed,
+  so this closes the H6 basic loop.
 
 The above capability packs are unblocked only after that ladder is
 complete. Stay in scope.

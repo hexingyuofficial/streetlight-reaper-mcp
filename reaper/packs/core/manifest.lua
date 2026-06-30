@@ -108,6 +108,13 @@ return {
       undo_flags  = undo.UNDO_STATE_TRACKCFG,
       entity_kind = "track",
     },
+    track_color = {
+      handler     = track_templates.track_color,
+      undoable    = true,
+      undo_label  = "Streetlight: track_color",
+      undo_flags  = undo.UNDO_STATE_TRACKCFG,
+      entity_kind = "track",
+    },
     track_rename = {
       handler     = track_templates.track_rename,
       undoable    = true,

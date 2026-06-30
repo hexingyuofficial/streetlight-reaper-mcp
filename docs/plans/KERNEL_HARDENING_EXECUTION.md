@@ -428,6 +428,19 @@ full tests, build, manifest check, error-code freshness, template
 authoring lint, and diff-check. Slice 19 should use this scaffolder for a
 real low-risk template.
 
+2026-07-01 Slice 19 execution note: H6 closure = use the Slice 18
+dry-run scaffolder workflow to land a real low-risk template,
+`track_color`. Keep scope to track color only: no FX/MIDI/routing/render,
+no new pack, no new MCP tool, no scaffolder write mode, and no new error
+code. `track_color` uses uppercase `#RRGGBB | null`; Lua converts to
+`I_CUSTOMCOLOR` with `ColorToNative(...) | 0x1000000` and `0` for clear.
+Verify adds only the narrow synthetic `I_CUSTOMCOLOR_HEX` reader on track
+scope. Static gates passed at 357/357, manifest/template-authoring both
+see 12 templates, and REAPER live smoke passed on 7.71/macOS-arm64 with
+smoke stamp `1782840178741`. This closes the H6 basic loop: authoring
+guide -> lint -> `defineTemplate` -> dry-run scaffolder -> real template
+-> static gates -> live REAPER smoke.
+
 ---
 
 ## H7 — 传输升级（可选 socket，契约不变）

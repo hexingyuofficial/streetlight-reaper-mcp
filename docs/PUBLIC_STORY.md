@@ -46,10 +46,14 @@ Shorter:
   constants and literal audits.
 - Risk gate in `call_template`.
 - Startup launcher / setup flow for easier install on another Mac.
-- Kernel hardening through Slice 10: structural `expectedDelta`,
-  field-level verification for the high-confidence item / track setters,
-  optional / nullable field semantics, creates / maybeCreates boundaries,
-  and real REAPER live smokes.
+- Kernel hardening through Slice 19: structural `expectedDelta`,
+  field-level verification for high-confidence item / track / region
+  setters, optional / nullable field semantics, creates /
+  maybeCreates boundaries, idempotency retry safety, and real REAPER
+  live smokes.
+- Template authoring loop through H6: author guide, authoring lint,
+  `defineTemplate`, dry-run scaffolder, and the first real generated-flow
+  template, `track_color`, live-smoked in REAPER.
 
 ## The Big Difference
 
@@ -134,6 +138,19 @@ Public phrasing:
 > OpenReaper is also an experiment in building software with agents:
 > one agent designs, one implements, one reviews, and the DAW is the final
 > judge.
+
+### 7. Template Factory Discipline
+
+The template factory work is deliberately conservative: first the
+authoring guide, then lint, then a type-level helper, then a dry-run
+scaffolder, then a real low-risk template (`track_color`) that still had
+to pass static gates and live REAPER smoke.
+
+Public phrasing:
+
+> OpenReaper is growing capability through a template factory discipline:
+> describe the command, generate the boring pieces, verify the result,
+> and only then count it as real.
 
 ## Good Demo Story
 

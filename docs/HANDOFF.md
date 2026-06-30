@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 18; dry-run template scaffolder)
+# Handoff — 2026-07-01 (Kernel Slice 19; track_color live-smoked)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -19,13 +19,23 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   follow-up at `45e0193 docs: follow up slice 16 authoring review`,
   Slice 17 as local save point `kernel-hardening: slice 17 define
   template helper` (static-green, not pushed), and Slice 17 reviewer
-  follow-up at `8f0b505 docs: follow up slice 17 review`. Slice 18 is
-  the current working-tree slice: H6 Phase 2 dry-run template
-  scaffolder, static-green, not committed yet. The user manages
+  follow-up at `8f0b505 docs: follow up slice 17 review`, and Slice
+  18 at `88b0edf kernel-hardening: slice 18 dry-run template
+  scaffolder` (pushed by the user via desktop). Slice 19 is the current
+  working-tree slice: H6 closure template `track_color`,
+  live-smoked/static-green, not committed yet. The user manages
   versioning out-of-band — do NOT commit, branch, push, or reset
   without an explicit ask. User preference (2026-06-29): local commits
   are okay as explicit save points, but avoid pushing during work hours
   unless the user explicitly makes an exception.
+- Slice 19 baseline: full `npm test` → **357/357 green**
+  (Slice 18 baseline 348/348 plus 8 new `track_color` fake-bridge tests
+  and 1 new Lua-structure test), `npm run build` → clean,
+  `npm run check:manifest` → 12 templates aligned,
+  `npm run check:error-codes-fresh` → 22 codes fresh,
+  `npm run check:template-authoring` → 12 templates ok, and
+  `git diff --check` → clean. REAPER live smoke passed on
+  `7.71/macOS-arm64` after full restart.
 - Slice 18 static baseline: full `npm test` → **348/348 green**
   (Slice 17 baseline 329/329 plus 19 new scaffolder tests in
   `scripts/__tests__/scaffold-template.test.mjs`), `npm run build` →
@@ -74,8 +84,54 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
-- **Kernel hardening Slice 18 ✅ code-done / static-green / uncommitted
-  working tree (2026-06-30).** Scope from
+- **Kernel hardening Slice 19 ✅ live-smoked / static-green /
+  uncommitted (2026-07-01).** Scope from the Architect packet in the
+  conversation. This is the **H6 closure slice**: use the Slice 18
+  scaffolder flow to land a real low-risk template, `track_color`.
+  - New file `packages/mcp-server/src/templates/track-color.ts` defines
+    `track_color` with params `{ track_id, color }`, where `color` is
+    uppercase `#RRGGBB` or `null`. `null` clears custom color;
+    `#000000` is black and must not collapse to clear.
+  - `packages/mcp-server/src/templates/index.ts` registers
+    `trackColorDefinition`; template count is now 12.
+  - `reaper/packs/core/templates/track.lua` adds `M.track_color`.
+    It resolves the track first, parses hex before mutation, applies
+    `reaper.ColorToNative(r, g, b) | 0x1000000` via
+    `SetMediaTrackInfo_Value(track, "I_CUSTOMCOLOR", applied)`, and
+    sets `0` for clear.
+  - `reaper/packs/core/manifest.lua` wires `track_color` as
+    `entity_kind = "track"`, `undoable = true`, `undo_flags =
+    undo.UNDO_STATE_TRACKCFG`.
+  - `reaper/packs/core/verify.lua` adds the narrow synthetic track
+    field `I_CUSTOMCOLOR_HEX`: disabled/no custom color reads as `0`,
+    enabled colors mask off `0x1000000`, use `ColorFromNative`, and
+    return uppercase `#RRGGBB`. This keeps the agent API portable and
+    avoids exposing REAPER native color integers.
+  - New file
+    `packages/mcp-server/src/tools/__tests__/track-color.test.ts` adds
+    8 fake-bridge tests: happy envelope, on-wire black, on-wire null,
+    bridge `TRACK_NOT_FOUND`, missing `track_id`, lowercase rejection,
+    malformed-color rejection, and `list_templates` metadata.
+  - `packages/mcp-server/src/tools/__tests__/list-templates.test.ts`
+    now treats `track_color` as the 11th field-verified template;
+    `scripts/__tests__/lua-structure.test.mjs` locks the
+    `I_CUSTOMCOLOR` / enabled-bit implementation.
+  - Static gates green: `npm test` 357/357, `npm run build`,
+    `npm run check:manifest`, `npm run check:error-codes-fresh`,
+    `npm run check:template-authoring`, and `git diff --check`.
+  - Live smoke passed on REAPER `7.71/macOS-arm64` after full
+    quit/reopen and current `start_bridge.lua`: console showed
+    generation 1, loaded error codes, and `track_color` in the ready
+    template list. Smoke run id/stamp `1782840178741`; track GUID
+    `guid:{016B7CED-64A7-1645-9AE2-E6E1547CA447}`. `track_create` ok;
+    `track_color` `#2D9CDB`, `#000000`, and `null` all returned locked
+    envelopes with `changed_count=1` and the same track GUID;
+    `track_rename last_result:track:0` hit the same GUID; missing track
+    returned typed `TRACK_NOT_FOUND`, not `INTERNAL_ERROR`. Queue
+    cleanup ended `pending=0`, `running=0`, `done=0` (only
+    `bridge_owner` remained).
+- **Kernel hardening Slice 18 ✅ committed/pushed at `88b0edf`
+  (2026-06-30).** Scope from
   `docs/plans/SLICE_18_ARCHITECT_PLAN.md`. This is **H6 Phase 2**: a
   dry-run-only template scaffolder CLI.
   - New file `scripts/scaffold-template.mjs` exports pure helpers plus
@@ -1292,14 +1348,12 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Review / close Slice 18."** Slice 18 is the current
-       uncommitted working tree. It is static-green and has no REAPER
-       smoke requirement because it only adds a dry-run CLI + docs.
-       Run reviewer/static-smoke if not already done, then commit only
-       if the user explicitly asks. Avoid push during work hours unless
-       the user explicitly makes an exception.
+   (a) **"Commit Slice 19 / H6 closure."** Slice 19 is the current
+       uncommitted working tree. It is static-green and live-smoked on
+       REAPER `7.71/macOS-arm64`; H6's basic loop is closed. Commit/push
+       only if the user explicitly asks.
 
-   (b) **"Codex/reviewer found a bug in Slice 18 or earlier."** Locked
+   (b) **"Codex/reviewer found a bug in Slice 19 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -1308,13 +1362,16 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** Slice 18 baseline is full
-   `npm test` 348/348, `npm run build` clean,
+2. **Tests + build baseline this window:** Slice 19 baseline is full
+   `npm test` 357/357, `npm run build` clean,
    `npm run check:manifest` green,
    `npm run check:error-codes-fresh` green,
    `npm run check:template-authoring` green, and `git diff --check`
-   clean. Slice 18 has no REAPER smoke by decision S18-D8=a because no
-   runtime changed. Slice 17 baseline was full `npm test` 329/329,
+   clean. Slice 19 live smoke `1782840178741` is green. Slice 18
+   baseline was full `npm test` 348/348, build / manifest / error-code /
+   template-authoring / diff-check clean, with no REAPER smoke by
+   S18-D8=a because no runtime changed. Slice 17 baseline was full
+   `npm test` 329/329,
    build / manifest / error-code / template-authoring / diff-check
    clean, with no REAPER smoke by S17-D7=a. Slice 16 baseline was full
    `npm test` 326/326,

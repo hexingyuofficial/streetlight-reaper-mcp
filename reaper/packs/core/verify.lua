@@ -4,6 +4,8 @@
 -- field-level readback for four in-place templates. Slice 08 lets nullable
 -- field descriptors coerce explicit json.null params to expected value 0.
 -- Slice 12 adds region:NAME readback for region_create's name field.
+-- Slice 19 adds the narrow track synthetic field I_CUSTOMCOLOR_HEX so
+-- agents can use portable #RRGGBB/null instead of REAPER native integers.
 
 local M = {}
 
@@ -151,6 +153,12 @@ local function read_track_field(handle, field)
     local ok, value = reaper.GetSetMediaTrackInfo_String(handle, field, "", false)
     if ok == false then return false, nil, "track string field not found" end
     return true, value
+  end
+  if field == "I_CUSTOMCOLOR_HEX" then
+    local native = reaper.GetMediaTrackInfo_Value(handle, "I_CUSTOMCOLOR")
+    if native == 0 or (native & 0x1000000) == 0 then return true, 0 end
+    local r, g, b = reaper.ColorFromNative(native & 0xFFFFFF)
+    return true, ("#%02X%02X%02X"):format(r, g, b)
   end
   return true, reaper.GetMediaTrackInfo_Value(handle, field)
 end
