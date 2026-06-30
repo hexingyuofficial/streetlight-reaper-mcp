@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z, type ZodTypeAny } from "zod";
+import type { CapabilityDefinition } from "@streetlight/core";
 
 /**
  * Locked `call_template` result shape. The dispatcher in
@@ -19,4 +20,19 @@ export function callTemplateResultSchema<N extends string>(name: N) {
       truncated: z.boolean(),
     })
     .strict();
+}
+
+/**
+ * Type-level helper for template authors. It preserves the exact definition
+ * object at runtime while letting TypeScript infer the params/result schemas
+ * from the object literal.
+ */
+export function defineTemplate<
+  P extends ZodTypeAny,
+  R extends ZodTypeAny,
+  N extends string,
+>(
+  definition: CapabilityDefinition<P, R> & { name: N },
+): CapabilityDefinition<P, R> & { name: N } {
+  return definition;
 }

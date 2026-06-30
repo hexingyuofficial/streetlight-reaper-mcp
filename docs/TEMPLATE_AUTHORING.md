@@ -60,7 +60,7 @@ Adding one new template (`core` pack, existing `entity_kind`) touches
 exactly these files:
 
 ```
-packages/mcp-server/src/templates/<name-kebab>.ts              # NEW: Zod + CapabilityDefinition
+packages/mcp-server/src/templates/<name-kebab>.ts              # NEW: Zod + defineTemplate(...)
 packages/mcp-server/src/templates/index.ts                     # MODIFY: registry.register(...)
 packages/mcp-server/src/tools/__tests__/<name-kebab>.test.ts   # NEW: wire-shape + PARAMS_INVALID
 reaper/packs/<pack>/templates/<entity>.lua                     # MODIFY: add M.<name> handler
@@ -104,8 +104,7 @@ examples — both are 60–80 lines, no boilerplate beyond this):
 
 ```ts
 import { z } from "zod";
-import type { CapabilityDefinition } from "@streetlight/core";
-import { callTemplateResultSchema } from "./_shared.js";
+import { callTemplateResultSchema, defineTemplate } from "./_shared.js";
 
 const FooBarParams = z
   .object({
@@ -116,10 +115,7 @@ const FooBarParams = z
 
 const FooBarResult = callTemplateResultSchema("foo_bar");
 
-export const fooBarDefinition: CapabilityDefinition<
-  typeof FooBarParams,
-  typeof FooBarResult
-> = {
+export const fooBarDefinition = defineTemplate({
   name: "foo_bar",
   description: "Imperative-mood one-line summary.",
   pack: "core",
@@ -141,8 +137,14 @@ export const fooBarDefinition: CapabilityDefinition<
       params: { /* fully-formed, must parse on FooBarParams.strict() */ },
     },
   ],
-};
+});
 ```
+
+`defineTemplate(...)` is intentionally thin: it returns the exact object
+you pass in and adds no defaults, schema generation, normalization, or
+runtime behavior. Keep `const FooBarResult =
+callTemplateResultSchema("foo_bar")` explicit; the helper does not infer or
+create the locked result envelope for you.
 
 Rules the lint enforces:
 
@@ -554,12 +556,14 @@ accommodate. Do not start work on them under this guide:
   metadata back. Reuses the `render` entity_kind but adds a new
   result-shape contract.
 
-H6's full ladder (this guide is just Phase 0 — see
+H6's full ladder (this guide started as Phase 0 — see
 [`docs/plans/SLICE_16_ARCHITECT_PLAN.md`](plans/SLICE_16_ARCHITECT_PLAN.md))
-will land:
+is:
 
-- Slice 17 (candidate): `defineTemplate({ ... })` TS helper that
-  collapses the boilerplate this guide describes.
+- Slice 17: `defineTemplate({ ... })` TS helper in
+  `packages/mcp-server/src/templates/_shared.ts`. Use it for new TS
+  definitions; it is an identity helper and does not generate result
+  schemas or change runtime behavior.
 - Slice 18 (candidate): scaffolder CLI (`scripts/scaffold-template.mjs`)
   that emits all of `.ts` + `.lua` + test + manifest fragment from a
   single descriptor.

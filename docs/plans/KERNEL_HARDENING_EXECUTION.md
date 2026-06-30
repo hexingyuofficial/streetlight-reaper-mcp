@@ -405,6 +405,17 @@ check:template-authoring / diff-check) are sufficient. Slice 17 (TS
 `defineTemplate({...})` helper) and Slice 18 (scaffolder CLI) extend this
 foundation.
 
+2026-06-30 Slice 17 execution note: Phase 1 = TS-side
+`defineTemplate({ ... })` helper only. Put the helper in
+`packages/mcp-server/src/templates/_shared.ts`, keep it as a pure identity
+function, and keep result schemas explicit via
+`callTemplateResultSchema(name)`. Migrate only `item_pitch` and
+`track_rename` as pilots. Do not touch `scripts/template-authoring-lint.mjs`
+because `_shared.ts` is already excluded as a helper file. Required
+regression coverage: `defineTemplate(def) === def`, plus
+`CapabilityRegistry.list()` and `list_templates` metadata/schema checks
+for both pilots. No Lua/runtime change; no REAPER restart or live smoke.
+
 ---
 
 ## H7 — 传输升级（可选 socket，契约不变）

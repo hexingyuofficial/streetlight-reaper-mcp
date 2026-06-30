@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 16 reviewer follow-up; template authoring guide + lint)
+# Handoff — 2026-06-30 (Kernel Slice 17; defineTemplate helper)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -12,24 +12,29 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   `c923df9` Kernel Slice 08, `bf15daa` Kernel Slice 09,
   `2babc5c` Kernel Slice 10, `f66b2db` Kernel Slice 11,
   `6e4a02f` Kernel Slice 12, `f998507` Kernel Slice 13, and
-  `56c57cb` Kernel Slice 14. Slice 15 is code-done locally,
-  static-green, live-smoked, and saved as a local commit at
-  `39bf940 kernel-hardening: slice 15 render dedup` (not pushed). It
-  implements H4 Phase 2: `render_region` same-key retry replays the
-  stored deferred terminal inner envelope instead of rendering again.
-  Slice 16 is code-done locally, static-green, and saved as a local
-  commit at `0996b5b kernel-hardening: slice 16 template authoring
-  guide + lint` (not pushed). It lands H6 Phase 0 — the template
-  authoring guide (`docs/TEMPLATE_AUTHORING.md`) and a new author-side
-  static lint
-  (`scripts/template-authoring-lint.mjs`, CLI
-  `npm run check:template-authoring`) that enforces examples-against-Zod
-  and TS file slug ↔ `definition.name` parity. Per S16-D5=a, Slice 16
-  is TS/docs-only and does not need a REAPER live smoke. The user
-  manages versioning out-of-band — do NOT commit, branch, push, or
+  `56c57cb` Kernel Slice 14. Local commits ahead of `origin/main` are:
+  Slice 15 at `39bf940 kernel-hardening: slice 15 render dedup`
+  (live-smoked), Slice 16 at `0996b5b kernel-hardening: slice 16
+  template authoring guide + lint` (static-green), Slice 16 reviewer
+  follow-up at `45e0193 docs: follow up slice 16 authoring review`,
+  and Slice 17 as local save point `kernel-hardening: slice 17 define
+  template helper` (static-green, not pushed). Slice 17 lands H6 Phase
+  1: `defineTemplate({ ... })` in
+  `packages/mcp-server/src/templates/_shared.ts`, still pure identity,
+  with only `item_pitch` and `track_rename` migrated as pilots. The
+  user manages versioning out-of-band — do NOT commit, branch, push, or
   reset without an explicit ask. User preference (2026-06-29): local
   commits are okay as explicit save points, but avoid pushing during
   work hours unless the user explicitly makes an exception.
+- Slice 17 static baseline: full `npm test` → **329/329 green**
+  (Slice 16 baseline 326/326 plus 3 new helper/metadata regression
+  tests in
+  `packages/mcp-server/src/templates/__tests__/define-template.test.ts`),
+  `npm run build` → clean, `npm run check:manifest` → 11 templates
+  aligned, `npm run check:error-codes-fresh` → 22 codes fresh,
+  `npm run check:template-authoring` → 11 templates ok, and
+  `git diff --check` → clean. No REAPER smoke run (intentional;
+  S17-D7=a, TS/docs-only).
 - Slice 16 static baseline: full `npm test` → **326/326 green**
   (Slice 15 baseline 313/313 plus 13 new lint tests in
   `scripts/__tests__/template-authoring-lint.test.mjs`),
@@ -61,6 +66,39 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
+- **Kernel hardening Slice 17 ✅ code-done / static-green / local
+  save-point commit `kernel-hardening: slice 17 define template helper`
+  (2026-06-30).** Scope from
+  `docs/plans/SLICE_17_ARCHITECT_PLAN.md`. This is **H6 Phase 1**: the
+  TS-side `defineTemplate({ ... })` helper.
+  - `packages/mcp-server/src/templates/_shared.ts` now exports
+    `defineTemplate(...)`. It is deliberately type-level and returns the
+    exact input object reference; it does not clone, normalize, add
+    defaults, generate result schemas, or change runtime behavior.
+  - Only two low-risk pilots migrated: `item_pitch` and `track_rename`.
+    They keep explicit `callTemplateResultSchema(name)` constants; Slice
+    17 does not add hidden result-schema magic.
+  - New test file
+    `packages/mcp-server/src/templates/__tests__/define-template.test.ts`
+    adds 3 tests: identity (`defineTemplate(def) === def`), direct
+    `CapabilityRegistry.list()` metadata regression, and `list_templates`
+    metadata regression for both pilots. Coverage asserts name, risk,
+    mutates, undoable, entity_kind, undo_flags, idempotent,
+    expectedDelta, examples, params JSON Schema key fields, and locked
+    result-envelope JSON Schema.
+  - `docs/TEMPLATE_AUTHORING.md` now recommends `defineTemplate({ ... })`
+    in the TS authoring step and explicitly says result schemas remain
+    explicit. H6 master plan / execution notes record Slice 17 and leave
+    the scaffolder CLI for Slice 18+.
+  - Zero runtime change: no Lua, no `streetlight_bridge.lua`, no
+    `verify.lua`, no `manifest.lua`, no `expectedDelta` shape, no error
+    codes, no wire fields, no MCP tools, no new templates, no change to
+    `CapabilityDefinition`.
+  - Static gates green: `npm test` 329/329, `npm run build`,
+    `npm run check:manifest`, `npm run check:error-codes-fresh`,
+    `npm run check:template-authoring`, and `git diff --check`.
+  - Per S17-D7=a no REAPER smoke. There is nothing bridge-visible to
+    exercise.
 - **Kernel hardening Slice 16 ✅ code-done / static-green /
   locally committed at `0996b5b` (2026-06-30).** Scope from
   `docs/plans/SLICE_16_ARCHITECT_PLAN.md`. This is **H6 Phase 0**: the
@@ -119,8 +157,8 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     handler symbols or `entity_buckets` membership; new pack loading is
     still future work because the bridge loads `core` explicitly. The
     follow-up doc fix corrects those statements and updates this
-    handoff state; it is docs-only and currently uncommitted on top of
-    `0996b5b`. Follow-up gates are green: `npm test` 326/326,
+    handoff state; it is docs-only and committed locally at `45e0193`.
+    Follow-up gates are green: `npm test` 326/326,
     `npm run build`, `npm run check:manifest`,
     `npm run check:error-codes-fresh`, `npm run check:template-authoring`,
     and `git diff --check`.

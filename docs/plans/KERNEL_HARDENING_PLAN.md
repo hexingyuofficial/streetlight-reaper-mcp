@@ -344,6 +344,16 @@ helper (Slice 17 candidate) and the full-stack scaffolder CLI (Slice 18
 candidate) come later. Slice 16 is TS/docs-only; no Lua runtime, wire,
 schema, or error-code change, and no REAPER live smoke needed.
 
+2026-06-30 note: Slice 17 lands H6 Phase 1 — a template-local
+`defineTemplate({ ... })` identity helper in
+`packages/mcp-server/src/templates/_shared.ts`. It reduces TS definition
+boilerplate without changing `CapabilityDefinition`, runtime behavior,
+wire shape, Lua, manifest metadata, or `list_templates` output. The
+slice migrates only `item_pitch` and `track_rename` as low-risk pilots
+and adds regression coverage proving their `CapabilityRegistry` /
+`list_templates` metadata and JSON Schemas stay stable. The full-stack
+scaffolder CLI remains Slice 18+.
+
 > **这一项回答了你的问题「内核稳了能不能走捷径追上广度」**：能。H6 之后，REAPER
 > 有限的 ReaScript API 表面可被**批量描述符 → 批量生成 → 批量验证**，每个模板都带
 > H2 的校验契约。对手的 80 个手写工具没有 verify，你的 200 个生成工具每个都有。

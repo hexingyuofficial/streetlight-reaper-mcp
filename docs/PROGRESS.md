@@ -11,9 +11,41 @@ first.
 
 ## Current Status
 
+**Kernel hardening Slice 17 ✅ code-done / static-green / local
+save-point commit `kernel-hardening: slice 17 define template helper`
+(2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_17_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 17 lands **H6 Phase
+1**: the TS-side `defineTemplate({ ... })` helper in
+`packages/mcp-server/src/templates/_shared.ts`. The helper is an
+identity function — it returns the exact input definition object and
+does not clone, normalize, add defaults, generate result schemas, or
+change runtime behavior. Only `item_pitch` and `track_rename` migrate
+as low-risk pilots; both keep explicit `callTemplateResultSchema(name)`
+constants. `docs/TEMPLATE_AUTHORING.md` now recommends
+`defineTemplate(...)` in the TS authoring step and states that result
+schemas remain explicit. New tests in
+`packages/mcp-server/src/templates/__tests__/define-template.test.ts`
+cover identity plus `CapabilityRegistry.list()` and `list_templates`
+metadata/schema regressions for both pilots: name, risk, mutates,
+undoable, entity_kind, undo_flags, idempotent, expectedDelta,
+examples, params JSON Schema key fields, and locked result-envelope
+JSON Schema. Zero runtime change: no Lua, bridge, manifest, verify,
+wire, error-code, MCP-tool, template-count, or `CapabilityDefinition`
+contract change. Static gates are green: full `npm test` **329/329**
+(Slice 16 baseline 326/326 + 3 helper/metadata regression tests),
+`npm run build` clean, `npm run check:manifest` 11 templates aligned,
+`npm run check:error-codes-fresh` 22 codes fresh,
+`npm run check:template-authoring` 11 templates ok, and
+`git diff --check` clean. Per S17-D7=a no REAPER live smoke is
+required because nothing bridge-visible changed. Local commit policy
+unchanged: do not push during the work-hours window unless the user
+explicitly makes an exception.
+
 **Kernel hardening Slice 16 ✅ code-done / static-green / locally
-committed at `0996b5b` with docs-only reviewer follow-up in working
-tree (2026-06-30).** Architect packet lives at
+committed at `0996b5b` with docs-only reviewer follow-up committed at
+`45e0193` (2026-06-30).** Architect packet lives at
 `docs/plans/SLICE_16_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 16 lands **H6 Phase
@@ -49,7 +81,10 @@ risk; `check:manifest` was overstated as proving handler symbols and
 `entity_buckets` membership; and the new-pack section implied bridge
 pack discovery already exists. The follow-up doc fix corrects those
 claims and keeps runtime untouched. Follow-up gates so far:
-`npm run check:template-authoring` green and `git diff --check` clean.
+`npm test` 326/326, `npm run build`, `npm run check:manifest`,
+`npm run check:error-codes-fresh`, `npm run check:template-authoring`,
+and `git diff --check` all green; the follow-up is committed locally at
+`45e0193`.
 
 **Kernel hardening Slice 15 ✅ live-smoked / static-green /
 locally committed at `39bf940` (2026-06-30).** Architect packet lives at
@@ -2046,8 +2081,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 + Slice 16 ✅ locally committed; Slice 16 reviewer follow-up docs-only in working tree | Commit follow-up only on explicit ask |
-| Tests | Slice 16: full 326/326, build / manifest / error-code / template-authoring / diff-check clean; Slice 15 live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Avoid work-hours push unless the user explicitly makes an exception |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 + Slice 16 + Slice 16 follow-up + Slice 17 ✅ locally committed / ready as local save points | Push only on explicit user exception during work hours |
+| Tests | Slice 17: full 329/329, build / manifest / error-code / template-authoring / diff-check clean; Slice 15 live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Avoid work-hours push unless the user explicitly makes an exception |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -2098,17 +2133,17 @@ Slice 14 was committed and pushed at `56c57cb` after live smoke
 `slice14-1782815129961`. Slice 15 is locally committed at `39bf940`
 and live-smoked with run id `slice15-1782819968415`. Slice 16 is
 locally committed at `0996b5b`; reviewer Locke's docs-only follow-up is
-currently in the working tree and not yet committed.
+locally committed at `45e0193`; Slice 17 is static-green and saved as
+local commit `kernel-hardening: slice 17 define template helper`.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Close Slice 16 reviewer follow-up.** Current working tree fixes
-   Locke's docs-only accuracy findings. Commit only if the user
-   explicitly asks; avoid push during work hours unless the user
-   explicitly makes an exception.
+1. **Choose the next kernel slice.** H6 Phase 2 (`scripts/scaffold-template.mjs`)
+   is the natural follow-up to Slice 17's `defineTemplate` helper, but it
+   should get its own architect packet before coding.
 2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.

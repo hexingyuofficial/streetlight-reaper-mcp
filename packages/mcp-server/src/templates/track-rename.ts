@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { CapabilityDefinition } from "@streetlight/core";
-import { callTemplateResultSchema } from "./_shared.js";
+import { callTemplateResultSchema, defineTemplate } from "./_shared.js";
 
 /**
  * `track_rename` — set a track's name.
@@ -32,10 +31,7 @@ const TrackRenameParams = z
 
 const TrackRenameResult = callTemplateResultSchema("track_rename");
 
-export const trackRenameDefinition: CapabilityDefinition<
-  typeof TrackRenameParams,
-  typeof TrackRenameResult
-> = {
+export const trackRenameDefinition = defineTemplate({
   name: "track_rename",
   description: "Rename a track resolved by name, GUID, or last_result.",
   pack: "core",
@@ -59,4 +55,4 @@ export const trackRenameDefinition: CapabilityDefinition<
       params: { track_id: "last_result:track:0", name: "Impacts" },
     },
   ],
-};
+});

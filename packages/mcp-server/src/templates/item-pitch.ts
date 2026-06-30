@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { CapabilityDefinition } from "@streetlight/core";
-import { callTemplateResultSchema } from "./_shared.js";
+import { callTemplateResultSchema, defineTemplate } from "./_shared.js";
 
 /**
  * `item_pitch` — set the pitch of an item's active take, in semitones.
@@ -36,10 +35,7 @@ const ItemPitchParams = z
 
 const ItemPitchResult = callTemplateResultSchema("item_pitch");
 
-export const itemPitchDefinition: CapabilityDefinition<
-  typeof ItemPitchParams,
-  typeof ItemPitchResult
-> = {
+export const itemPitchDefinition = defineTemplate({
   name: "item_pitch",
   description: "Set the active take's pitch (in semitones) on the referenced item.",
   pack: "core",
@@ -63,4 +59,4 @@ export const itemPitchDefinition: CapabilityDefinition<
       params: { item_id: "selected:0", semitones: -12 },
     },
   ],
-};
+});
