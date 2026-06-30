@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 08 ✅ live-smoked; item_fade nullable field verification)
+# Handoff — 2026-06-30 (Kernel Slice 09 ✅ live-smoked; item_duplicate creates field verification)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -8,20 +8,89 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   branch `main`. Recent pushed checkpoints: `baa13bd` Kernel Slice
   01, `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03,
   `d3f8fe7` Kernel Slice 04, `5ba6318` Kernel Slice 05, and
-  `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07. The current
-  working tree is **Kernel hardening Slice 08** (uncommitted,
-  live-smoked): H2 field-level verification now covers
-  `item_fade` and introduces `nullable:true` descriptors. The user
-  manages versioning
-  out-of-band — do NOT commit, branch, push, or reset without an
-  explicit ask.
-- Slice 08 static baseline: `npm test` → **263/263 green**,
+  `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07, and
+  `c923df9` Kernel Slice 08. The current working tree is **Kernel
+  hardening Slice 09** (uncommitted, live-smoked): H2
+  field-level verification now covers `item_duplicate`, the first
+  `creates:true` template with `expectedDelta.fields[]`. The user
+  manages versioning out-of-band — do NOT commit, branch, push, or
+  reset without an explicit ask.
+- Slice 09 static baseline: `npm test` → **272/272 green**,
   `npm run build` → clean, `npm run check:manifest` → 11 templates
   aligned, `npm run check:error-codes-fresh` → 22 codes fresh, and
-  `git diff --check` → clean. Reviewer pass completed; REAPER live
-  smoke passed on REAPER 7.71/macOS-arm64.
-- **Kernel hardening Slice 08 ✅ live-smoked
+  `git diff --check` → clean. Reviewer pass completed with only P3
+  nits, now fixed; REAPER live smoke passed on REAPER
+  7.71/macOS-arm64.
+- **Kernel hardening Slice 09 ✅ live-smoked
   (2026-06-30).** Scope from
+  `docs/plans/SLICE_09_ARCHITECT_PLAN.md`:
+  - `item_duplicate` now keeps its locked success envelope and
+    `expectedDelta={count:1,creates:true}`, but adds one field check:
+    item `D_POSITION` from `params.position`, tolerance `1e-6`.
+  - This is the first D5 relaxation: `expectedDelta.fields[]` may
+    coexist with `creates:true` only when `count` is a finite positive
+    integer. Static validation still rejects `fields[]` with
+    `maybeCreates:true`, `deletes:true`, and `creates:true` plus
+    `count:"any"`.
+  - No Lua runtime code changed in this slice. `verify.lua` already
+    resolves `changed_ids[1]` as a GUID-shaped item ref and reads item
+    `D_POSITION`; Slice 09 only lets a creates-style descriptor use
+    that existing path.
+  - Still deferred: `track_create` / `maybeCreates` (Slice 10),
+    `media_import` / `count:"any"` (Slice 11+), `region_create` /
+    region scope + `region:NAME` refs (Slice 12+), and
+    `render_region` artifact-path carve-out.
+  - Decisions locked by user from the Architect packet:
+    D1=a `item_duplicate`; D2=a creates-only, no maybeCreates;
+    D3=a numeric positive count only, no `count:"any"`; D4=a verify
+    only `D_POSITION`; D5=a tolerance `1e-6`.
+  - New / updated static redlines cover the D5 boundary in both
+    `packages/core/src/registry.ts` and
+    `scripts/manifest-alignment.mjs`; `list_templates` and
+    `call_template` tests assert the `item_duplicate` wire / metadata
+    shape; Lua structure tests assert Slice 09 did not add region
+    field verification scope.
+  - Live smoke passed after full REAPER quit/reopen and current
+    `start_bridge.lua` run. Console evidence supplied by the user:
+    `bridge starting (generation 1)`, queue dir
+    `/Users/Zhuanz/Library/Application Support/Streetlight/queue`,
+    `loaded error_codes (22 codes)`, and
+    `bridge ready (generation 1) — loaded error_codes (22 codes)` with
+    all 11 templates. `ping` returned `connected` on
+    `7.71/macOS-arm64`.
+  - Smoke run id: `slice09-1782785591409`; evidence snapshot:
+    `/tmp/streetlight_slice09_live_smoke_evidence.json`.
+    `list_templates` showed
+    `item_duplicate.expectedDelta={count:1,creates:true,fields:[item
+    D_POSITION <- position, tolerance 1e-6]}` with no `optional` /
+    `nullable`. `track_create`, `media_import`, and `region_create`
+    still had no `fields`; `render_region` still had no
+    `expectedDelta`.
+  - Happy `item_duplicate` verified new item `D_POSITION`: same-track
+    duplicate `guid:{F21B1BCA-29D3-B048-A690-8D97CAB24A50}` at 2.5s
+    from source item `guid:{EEB0E942-456D-FD4F-AF89-C633E1882ECB}`;
+    cross-track duplicate
+    `guid:{FD377B79-195D-5B45-AD97-A18EA4C89CF3}` at 0s on target
+    track `guid:{365AD42A-7CBA-9C4C-8E3A-705EDA1CE883}`.
+  - Raw field mismatch changed the wire field to `D_POSITIONX` and
+    returned `VERIFY_FAILED`, `recoverable:false`,
+    `details.fields[0]={field:"D_POSITIONX", expected:7.7,
+    actual:0, ok:false}` plus the Slice 04 recovery phrase. This
+    intentionally leaves a real duplicate item at 7.7s on the target
+    track, but `LAST_RESULT` stayed on the previous successful item:
+    follow-up `item_pitch last_result:item:0 semitones:0` changed
+    `guid:{FD377B79-195D-5B45-AD97-A18EA4C89CF3}`.
+  - Slice 06/07/08 regressions passed (`item_pitch`, `item_move`,
+    `item_trim`, `item_fade`); forced bad `param_path` and structural
+    count mismatch stayed typed `VERIFY_FAILED`; `ITEM_NOT_FOUND`,
+    `TRACK_NOT_FOUND`, `REGION_NAME_INVALID`, get_state include
+    regressions, `render_region` WAV-only artifact carve-out, and
+    `track_create` maybeCreates create/reuse stability all passed.
+    Render smoke created only
+    `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/streetlight_slice09_live_smoke_1782785591409/renders/slice09-r-1782785591409.wav`
+    before the temp render dir was removed.
+- **Kernel hardening Slice 08 ✅ live-smoked
+  / committed and pushed (2026-06-30, `c923df9`).** Scope from
   `docs/plans/SLICE_08_ARCHITECT_PLAN.md`:
   - `FieldCheckDescriptor` now has optional `nullable?: boolean`.
     Registry and manifest alignment require it to be boolean when
@@ -148,7 +217,8 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   - Decisions locked by user: D1=a four-template subset; D2=a
     tolerance `1e-6`; D3=a fields nested inside `expected_delta`; D4=a
     field failure does not update `LAST_RESULT`; D5=a fields cannot
-    coexist with creates/maybeCreates/deletes in Slice 06.
+    coexist with creates/maybeCreates/deletes in Slice 06. Slice 09
+    later relaxes only the `creates:true` + numeric-count case.
   - Live smoke passed on REAPER 7.71/macOS-arm64 after a full
     quit/reopen and current `start_bridge.lua` run. Console showed
     `bridge starting (generation 1)`, `loaded error_codes (22 codes)`,
@@ -633,12 +703,12 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit/push Slice 08."** Static baseline, reviewer pass, and
+   (a) **"Commit/push Slice 09."** Static baseline, reviewer pass, and
        REAPER live smoke are green. Re-run `git diff --check` and a
        quick baseline if desired, then commit/push only if the user
        explicitly asks.
 
-   (b) **"Codex found a bug in Slice 08 or earlier."** Locked
+   (b) **"Codex/reviewer found a bug in Slice 09 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -647,10 +717,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** `npm test` 263/263,
+2. **Tests + build baseline this window:** `npm test` 272/272,
    `npm run build` clean, `npm run check:manifest` green,
    `npm run check:error-codes-fresh` green, `git diff --check`
-   clean. The `npm run typecheck` script prints a
+   clean. Slice 09 REAPER smoke `slice09-1782785591409` is green. The
+   `npm run typecheck` script prints a
    `TS6310` "may not disable emit" line then exits 0 — pre-existing
    project setup, do not chase. The `[streetlight-mcp] done-sweep:
    readdir failed (EACCES…)` line in test output is the expected

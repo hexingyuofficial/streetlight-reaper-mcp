@@ -89,7 +89,7 @@ describe("listTemplates", () => {
     expect(renderRegion).not.toHaveProperty("expectedDelta");
   });
 
-  it("exposes field-check metadata only on the six covered in-place templates", () => {
+  it("exposes field-check metadata on the seven covered templates", () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);
     const result = listTemplates(registry);
@@ -108,6 +108,10 @@ describe("listTemplates", () => {
       [
         "item_rate",
         [{ scope: "take", field: "D_PLAYRATE", paramPath: "rate", tolerance: 1e-6 }],
+      ],
+      [
+        "item_duplicate",
+        [{ scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 }],
       ],
       [
         "item_fade",
@@ -157,6 +161,26 @@ describe("listTemplates", () => {
         expect(template.expectedDelta).not.toHaveProperty("fields");
       }
     }
+  });
+
+  it("keeps item_duplicate field metadata free of optional and nullable", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const itemDuplicate = result.result.templates.find((t) => t.name === "item_duplicate");
+    expect(itemDuplicate?.expectedDelta).toEqual({
+      count: 1,
+      creates: true,
+      fields: [
+        { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+      ],
+    });
+    const field = itemDuplicate?.expectedDelta?.fields?.[0];
+    expect(field).not.toHaveProperty("optional");
+    expect(field).not.toHaveProperty("nullable");
   });
 
   it("does not leak nullable metadata onto templates that did not declare it", () => {

@@ -137,6 +137,13 @@ matching the fade-clear handler contract. `item_duplicate`,
 `track_create`, `media_import`, and `region_create` stay Slice 09+
 because creates/maybeCreates templates still need the D5 relaxation.
 
+2026-06-30 note: Slice 09 extends field-level verification to
+`item_duplicate` and makes the first narrow D5 relaxation:
+`expectedDelta.fields[]` may coexist with `creates:true` only when
+`count` is a finite positive integer. `track_create` / `maybeCreates`
+stays Slice 10, `media_import` / `count:"any"` stays Slice 11+, and
+`region_create` / region-scope field readers stay Slice 12+.
+
 **触及文件**：
 - `packages/core/src/registry.ts`（`expectedDelta` 字段）
 - `packages/core/src/errors.ts`（`VERIFY_FAILED`）

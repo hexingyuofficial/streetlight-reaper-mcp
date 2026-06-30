@@ -175,7 +175,16 @@ describe("callTemplate", () => {
           ],
         },
       ],
-      ["item_duplicate", { count: 1, creates: true }],
+      [
+        "item_duplicate",
+        {
+          count: 1,
+          creates: true,
+          fields: [
+            { scope: "item", field: "D_POSITION", param_path: "position", tolerance: 1e-6 },
+          ],
+        },
+      ],
       ["media_import", { count: "any", creates: true }],
       ["track_create", { count: 1, maybeCreates: true }],
       [
@@ -220,6 +229,57 @@ describe("callTemplate", () => {
         params: validParamsByTemplate.render_region,
       });
       expect(bridge.seen.at(-1)).not.toHaveProperty("expected_delta");
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: item_duplicate sends creates plus a D_POSITION field descriptor", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{DUP}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "item_duplicate",
+        params: { item_id: "selected:0", track_id: "track:Variations", position: 2.5 },
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        creates: true,
+        fields: [
+          {
+            scope: "item",
+            field: "D_POSITION",
+            param_path: "position",
+            tolerance: 1e-6,
+          },
+        ],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: item_duplicate D_POSITION descriptor omits optional and nullable", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["guid:{DUP}"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "item_duplicate",
+        params: { item_id: "selected:0", track_id: "track:Variations", position: 1 },
+      });
+      const fields = bridge.seen.at(-1)?.expected_delta?.fields;
+      expect(fields).toEqual([
+        {
+          scope: "item",
+          field: "D_POSITION",
+          param_path: "position",
+          tolerance: 1e-6,
+        },
+      ]);
+      expect(fields?.[0]).not.toHaveProperty("optional");
+      expect(fields?.[0]).not.toHaveProperty("nullable");
     } finally {
       await bridge.stop();
     }

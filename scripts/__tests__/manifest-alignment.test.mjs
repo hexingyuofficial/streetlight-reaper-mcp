@@ -188,7 +188,6 @@ return { templates = {
           entity_kind: "item",
           expectedDelta: {
             count: 1,
-            creates: true,
             fields: [
               { scope: "take", field: "D_PITCH", paramPath: "take.pitch", tolerance: -1 },
               { scope: "take", field: "D_PITCH", paramPath: "semitones" },
@@ -202,10 +201,6 @@ return { templates = {
     ]);
     const lua = parseManifestLua(SAMPLE_MANIFEST);
     const errors = diffManifestAlignment(ts, lua);
-
-    expect(errors).toContain(
-      "EXPECTED_DELTA_INVALID:item_pitch: fields are only supported for in-place templates",
-    );
     expect(errors).toContain(
       "EXPECTED_DELTA_INVALID:item_pitch: fields[0] paramPath must be top-level",
     );
@@ -229,6 +224,117 @@ return { templates = {
     );
     expect(errors).toContain(
       "EXPECTED_DELTA_INVALID:item_pitch: fields[4] nullable must be boolean",
+    );
+  });
+
+  it("allows fields with creates:true when count is a positive integer", () => {
+    const makeTs = (count) =>
+      new Map([
+        [
+          "item_pitch",
+          {
+            mutates: true,
+            undoable: true,
+            undo_flags: ["ITEMS"],
+            entity_kind: "item",
+            expectedDelta: {
+              count,
+              creates: true,
+              fields: [
+                { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+              ],
+            },
+          },
+        ],
+      ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+
+    expect(diffManifestAlignment(makeTs(1), lua)).not.toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires numeric count >= 1",
+    );
+    expect(diffManifestAlignment(makeTs(3), lua)).not.toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires numeric count >= 1",
+    );
+  });
+
+  it("rejects fields with creates:true and count:any", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: "any",
+            creates: true,
+            fields: [
+              { scope: "item", field: "D_POSITION", paramPath: "position" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields with creates:true requires numeric count >= 1",
+    );
+  });
+
+  it("still rejects fields with maybeCreates", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 1,
+            maybeCreates: true,
+            fields: [
+              { scope: "item", field: "D_POSITION", paramPath: "position" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields cannot coexist with maybeCreates yet",
+    );
+  });
+
+  it("still rejects fields with deletes", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 1,
+            deletes: true,
+            fields: [
+              { scope: "item", field: "D_POSITION", paramPath: "position" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors).toContain(
+      "EXPECTED_DELTA_INVALID:item_pitch: fields cannot coexist with deletes",
     );
   });
 

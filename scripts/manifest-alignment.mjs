@@ -163,9 +163,25 @@ function validateExpectedDeltaFields(name, expected) {
   if (!Array.isArray(fields) || fields.length === 0) {
     return [`EXPECTED_DELTA_INVALID:${name}: fields must be a non-empty array when present`];
   }
-  if (expected.creates || expected.maybeCreates || expected.deletes) {
+  if (expected.deletes) {
     errors.push(
-      `EXPECTED_DELTA_INVALID:${name}: fields are only supported for in-place templates`,
+      `EXPECTED_DELTA_INVALID:${name}: fields cannot coexist with deletes`,
+    );
+  }
+  if (expected.maybeCreates) {
+    errors.push(
+      `EXPECTED_DELTA_INVALID:${name}: fields cannot coexist with maybeCreates yet`,
+    );
+  }
+  if (
+    expected.creates &&
+    (typeof expected.count !== "number" ||
+      !Number.isFinite(expected.count) ||
+      Math.floor(expected.count) !== expected.count ||
+      expected.count < 1)
+  ) {
+    errors.push(
+      `EXPECTED_DELTA_INVALID:${name}: fields with creates:true requires numeric count >= 1`,
     );
   }
 

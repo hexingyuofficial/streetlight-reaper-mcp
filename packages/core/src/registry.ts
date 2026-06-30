@@ -229,9 +229,25 @@ function validateExpectedDeltaFields(
     );
   }
 
-  if (expectedDelta.creates || expectedDelta.maybeCreates || expectedDelta.deletes) {
+  if (expectedDelta.deletes) {
     throw new Error(
-      `Capability ${name} expectedDelta.fields is only supported for in-place templates`,
+      `Capability ${name} expectedDelta.fields cannot coexist with deletes`,
+    );
+  }
+  if (expectedDelta.maybeCreates) {
+    throw new Error(
+      `Capability ${name} expectedDelta.fields cannot coexist with maybeCreates yet`,
+    );
+  }
+  if (
+    expectedDelta.creates &&
+    (typeof expectedDelta.count !== "number" ||
+      !Number.isFinite(expectedDelta.count) ||
+      Math.floor(expectedDelta.count) !== expectedDelta.count ||
+      expectedDelta.count < 1)
+  ) {
+    throw new Error(
+      `Capability ${name} expectedDelta.fields with creates:true requires numeric count >= 1`,
     );
   }
 

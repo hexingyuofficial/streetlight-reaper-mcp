@@ -139,6 +139,13 @@ now receives the bridge handler `ctx` so it can compare against the
 same `ctx.json.null` sentinel as the handler; live smoke again requires
 full quit/reopen REAPER before loading `start_bridge.lua`.
 
+2026-06-30 note: Slice 09 implements `item_duplicate` field
+postchecks without changing `verify.lua`. It is still a REAPER-restart
+slice because the wire shape now sends `creates:true` and `fields[]`
+together for the first time; full quit/reopen before loading
+`start_bridge.lua` prevents stale bridge chunks from claiming queue
+files with older manifest metadata.
+
 ### 细化点（这步设计难点都在这里）
 - **不要做任意字段的全量 before/after diff**——太贵且 before 不可知（handler 内部才解析
   出受影响实体）。校验只覆盖两类**可知后置条件**：

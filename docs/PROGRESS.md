@@ -11,29 +11,45 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 08 ✅ live-smoked
+**Kernel hardening Slice 09 ✅ live-smoked
 (2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_09_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 09 continues H2
+field-level verification by adding `item_duplicate`, the first
+creates-style template with `expectedDelta.fields[]`. D5 is relaxed
+only for `creates:true` descriptors whose `count` is a finite positive
+integer; static validation still rejects `fields[]` with
+`maybeCreates:true`, `deletes:true`, and `creates:true` plus
+`count:"any"`. `item_duplicate` now declares item `D_POSITION ←
+params.position`, tolerance `1e-6`, with no `optional` or `nullable`.
+No Lua runtime path changed: the existing Slice 06 `verify.lua`
+changed-id GUID resolver and item field reader are reused. Decisions
+locked by user: D1=a only `item_duplicate`; D2=a creates-only, no
+maybeCreates; D3=a numeric positive count only; D4=a only
+`D_POSITION`; D5=a tolerance `1e-6`. Static gates are green:
+`npm test` 272/272, `npm run build` clean, `npm run check:manifest`
+green, `npm run check:error-codes-fresh` green, and
+`git diff --check` clean. Reviewer pass completed with only P3 nits,
+now fixed; REAPER live smoke passed on REAPER 7.71/macOS-arm64 after
+full quit/reopen and current `start_bridge.lua` run. Console showed
+generation 1 and `loaded error_codes (22 codes)`.
+
+**Kernel hardening Slice 08 ✅ live-smoked, committed, and pushed
+(2026-06-30, `c923df9`).** Architect packet lives at
 `docs/plans/SLICE_08_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 08 continues H2
 field-level verification by adding `item_fade`, the first nullable
-field-verify template. `FieldCheckDescriptor` now supports
+field-verify template. `FieldCheckDescriptor` supports
 `nullable?: boolean`; validation rejects non-boolean `nullable` values
 and allows an all-optional `fields[]` list only when every field is also
-nullable. `item_fade` declares item `D_FADEINLEN ← params.fade_in` and
-item `D_FADEOUTLEN ← params.fade_out`, both `optional:true` and
-`nullable:true`. The bridge wire carries `nullable:true`, and
-`verify.lua` coerces explicit `ctx.json.null` to expected value `0`
-only when the descriptor is nullable. Decisions locked by user:
-D1=a only `item_fade`; D2=a null coerces to `0`; D3=a `nullable`
-naming everywhere; D4=a all-optional legal iff all-nullable; D5=a
-fade tolerance `1e-6`. Focused static checks are green; full baseline,
-and static gates are green: `npm test` 263/263, `npm run build` clean,
-`npm run check:manifest` green, `npm run check:error-codes-fresh`
-green, and `git diff --check` clean. Reviewer pass completed, and
-REAPER live smoke passed on REAPER 7.71/macOS-arm64 after full
-quit/reopen and current `start_bridge.lua` run. Console showed
-generation 1 and `loaded error_codes (22 codes)`.
+nullable. Full static baseline was green: `npm test` 263/263,
+`npm run build` clean, `npm run check:manifest` green,
+`npm run check:error-codes-fresh` green, and `git diff --check` clean.
+Reviewer pass completed, and REAPER live smoke passed on REAPER
+7.71/macOS-arm64 after full quit/reopen and current `start_bridge.lua`
+run. Console showed generation 1 and `loaded error_codes (22 codes)`.
 
 **Kernel hardening Slice 07 ✅ live-smoked, committed, and pushed
 (2026-06-30, `9244be3`).** Architect packet lives at
@@ -623,7 +639,149 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
-### Kernel hardening Slice 08 (2026-06-30) — item_fade nullable field verification ✅ live-smoked
+### Kernel hardening Slice 09 (2026-06-30) — item_duplicate creates field verification ✅ live-smoked
+
+Scope: extend H2 field verification to `item_duplicate` and split the
+D5 boundary for the first creates-style template. This is deliberately
+the smallest creates slice: item entity kind, GUID-shaped
+`changed_ids[1]`, numeric `count:1`, item-scope `D_POSITION`, and no
+Lua verifier changes.
+
+What changed:
+
+- `docs/plans/SLICE_09_ARCHITECT_PLAN.md` — Architect packet copied
+  into the repo for future windows.
+- `packages/core/src/registry.ts` — `expectedDelta.fields[]` may now
+  coexist with `creates:true` only when `count` is a finite positive
+  integer. The guard still rejects fields with `maybeCreates:true`,
+  `deletes:true`, and `creates:true` plus `count:"any"`. Existing field
+  descriptor rules remain unchanged: scopes are still `take` / `item` /
+  `track`, duplicate `(scope,field)` pairs are rejected, `paramPath`
+  stays top-level, tolerance must be finite and non-negative, and
+  `optional` / `nullable` rules are unchanged.
+- `packages/mcp-server/src/templates/item-duplicate.ts` —
+  `item_duplicate.expectedDelta` expands from `{count:1, creates:true}`
+  to `{count:1, creates:true, fields:[...]}` with one descriptor:
+  item `D_POSITION` from `params.position`, tolerance `1e-6`.
+- `scripts/manifest-alignment.mjs` — mirrors the registry D5 boundary
+  so CLI alignment and runtime registration cannot drift.
+- Tests updated:
+  - registry tests accept `creates:true` with numeric count + fields and
+    reject `maybeCreates`, `deletes`, `count:"any"`, and `count:0`.
+  - call-template tests assert the on-wire `item_duplicate`
+    `expected_delta` includes `creates:true` plus item `D_POSITION` and
+    omits `optional` / `nullable`.
+  - list-templates tests assert `item_duplicate` is now the seventh
+    covered field-verify template and keeps its descriptor free of
+    `optional` / `nullable`.
+  - manifest-alignment tests mirror the legal / illegal D5 matrix.
+  - Lua structure tests assert Slice 09 did not add region field
+    verification scope or region ref parsing to `verify.lua`.
+
+Decisions locked by user:
+
+- D1=a: only `item_duplicate` in Slice 09.
+- D2=a: relax D5 only for `creates:true`, not `maybeCreates:true`.
+- D3=a: fields with `creates:true` require numeric positive count;
+  `count:"any"` remains rejected.
+- D4=a: verify only item `D_POSITION`.
+- D5=a: `D_POSITION` tolerance `1e-6`.
+
+Not changed:
+
+- No Lua runtime files changed. `reaper/packs/core/verify.lua` already
+  resolves `changed_ids[1]` as a GUID item ref and reads item
+  `D_POSITION`, so `item_duplicate` uses the Slice 06 path.
+- `track_create` remains `{count:1, maybeCreates:true}` with no fields
+  and is deferred to Slice 10.
+- `media_import` remains `{count:"any", creates:true}` with no fields
+  and is deferred to Slice 11+.
+- `region_create` remains `{count:1, creates:true}` with no fields;
+  region scope / `region:NAME` changed-id verification is deferred to
+  Slice 12+.
+- `render_region` still omits `expectedDelta` and keeps the artifact
+  path carve-out.
+
+Verification so far:
+
+- Focused registry / call-template / list-templates tests passed.
+- Focused manifest-alignment / Lua-structure tests passed.
+- Full static gates passed: `npm test` **272/272**, `npm run build`
+  clean, `npm run check:manifest` green,
+  `npm run check:error-codes-fresh` green, and `git diff --check`
+  clean.
+- Reviewer pass completed: no P1/P2. P3 nits fixed by recording
+  `git diff --check` in the Slice 09 static baseline and adding a
+  manifest-alignment redline for `deletes:true + fields[]`.
+- REAPER live smoke passed on REAPER 7.71/macOS-arm64 after full
+  quit/reopen and current `start_bridge.lua` run. Console evidence:
+  `bridge starting (generation 1)`, queue dir
+  `/Users/Zhuanz/Library/Application Support/Streetlight/queue`,
+  `loaded error_codes (22 codes)`, and
+  `bridge ready (generation 1) — loaded error_codes (22 codes)` with
+  all 11 templates. Evidence snapshot:
+  `/tmp/streetlight_slice09_live_smoke_evidence.json`; run id
+  `slice09-1782785591409`.
+
+Live smoke evidence:
+
+- S0/S1: `ping` returned `bridge:connected`,
+  `reaper_version=7.71/macOS-arm64`. `list_templates` returned 11
+  templates. `item_duplicate.expectedDelta` was exactly
+  `{count:1,creates:true,fields:[{scope:"item",field:"D_POSITION",
+  paramPath:"position",tolerance:1e-6}]}` and the field descriptor had
+  no `optional` / `nullable`. `track_create`, `media_import`, and
+  `region_create` still had no `fields`; `render_region` still had no
+  `expectedDelta`.
+- S2/S3: happy `item_duplicate` verified new-item `D_POSITION`.
+  Source track `guid:{BD97197C-6669-7344-8FDF-4E34CC6DC152}`;
+  source item `guid:{EEB0E942-456D-FD4F-AF89-C633E1882ECB}`;
+  same-track duplicate
+  `guid:{F21B1BCA-29D3-B048-A690-8D97CAB24A50}` at 2.5s; target track
+  `guid:{365AD42A-7CBA-9C4C-8E3A-705EDA1CE883}`; cross-track
+  duplicate `guid:{FD377B79-195D-5B45-AD97-A18EA4C89CF3}` at 0s.
+- S4-S6: Slice 08/07/06 regressions passed on the cross-track
+  duplicate: `item_fade fade_in:null`, `item_trim length:1.0`,
+  `item_pitch semitones:-3`, and `item_move position:5.0`.
+- S7/S8: raw queue field mismatch changed the descriptor field to
+  `D_POSITIONX` while params kept `position:7.7`. Handler created a
+  real duplicate at 7.7s on the target track, then field verification
+  returned `VERIFY_FAILED`, `recoverable:false`, with
+  `details.fields[0]={scope:"item",field:"D_POSITIONX",expected:7.7,
+  actual:0,ok:false,tolerance:1e-6}` and the Slice 04 recovery phrase.
+  `LAST_RESULT` was not polluted: follow-up
+  `item_pitch last_result:item:0 semitones:0` still changed
+  `guid:{FD377B79-195D-5B45-AD97-A18EA4C89CF3}`, not the S7 orphan.
+- S9/S10: raw bad `param_path:"positionX"` returned
+  `VERIFY_FAILED` with `details.fields[]`; raw structural mismatch
+  `count:2` returned structural `VERIFY_FAILED` first and omitted
+  top-level `details.fields`.
+- S11/S12: error-code and get_state regressions passed:
+  `selected:99` -> `ITEM_NOT_FOUND`, nonexistent target track ->
+  `TRACK_NOT_FOUND`, `region_create bad/name` ->
+  `REGION_NAME_INVALID`, `get_state(tracks, include:["fx"])` -> OK,
+  `get_state(render, include:["fx"])` -> `PARAMS_INVALID`, and bare
+  `get_state(render)` -> `SCOPE_NOT_IMPLEMENTED`.
+- S13/S14: `render_region` carve-out passed. Region
+  `slice09-r-1782785591409` rendered only
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/streetlight_slice09_live_smoke_1782785591409/renders/slice09-r-1782785591409.wav`
+  (288736 bytes), with absolute WAV path in `changed_ids`, no `.RPP` /
+  `.RPP-bak`, and the temp render dir removed after inspection.
+  `track_create reuse_existing:true` create/reuse returned the same
+  GUID `guid:{0B774446-531C-8F47-ADDA-50D98F2391BA}` and still had no
+  fields metadata.
+
+Regression notes to carry:
+
+- D5 is only partially relaxed. Do not add fields to `track_create`,
+  `media_import`, or `region_create` without a new Architect packet.
+- A `VERIFY_FAILED` after a creates handler may leave a real project
+  entity behind while intentionally not updating `LAST_RESULT`. Slice 09
+  live smoke verified this exact side effect: the S7 orphan duplicate at
+  7.7s on the target track is expected project state and is not in
+  `LAST_RESULT`.
+
+### Kernel hardening Slice 08 (2026-06-30) — item_fade nullable field verification ✅ live-smoked / pushed `c923df9`
 
 Scope: extend the Slice 06/07 field-verification infrastructure to
 `item_fade` and introduce nullable field descriptors for explicit JSON
@@ -820,7 +978,9 @@ What changed:
   optional `fields[]` descriptors with `{scope, field, paramPath,
   tolerance?}`. Validation rejects empty arrays, unknown scope, dotted
   `paramPath`, negative/non-finite tolerance, duplicate `(scope,field)`,
-  and fields on `creates` / `maybeCreates` / `deletes` templates.
+  and, at Slice 06 time, fields on `creates` / `maybeCreates` /
+  `deletes` templates. Slice 09 later relaxes only the
+  `creates:true` + numeric-count case.
 - `packages/mcp-server/src/templates/{item-pitch,item-move,item-rate,track-rename}.ts`
   — four in-place templates declare one field check each:
   `D_PITCH ← semitones`, `D_POSITION ← position`,
@@ -849,7 +1009,8 @@ Decisions locked by user:
 - D3=a: fields nested in `expected_delta`.
 - D4=a: field verify failure does not update `LAST_RESULT`.
 - D5=a: fields cannot coexist with creates/maybeCreates/deletes until a
-  later slice.
+  later slice; Slice 09 is that first narrow later slice for
+  `creates:true` + numeric count only.
 
 Verification so far:
 
@@ -989,10 +1150,10 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-08 ✅ | Slice 08 commit/push if user asks |
-| Tests | Slice 08: 263/263 green; REAPER live smoke ✅; Slice 07 pushed at `9244be3` | none for Slice 08 |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-09 ✅ | Slice 09 commit/push only if user authorizes |
+| Tests | Slice 09: 272/272 green; build / manifest / error-code / diff-check clean; reviewer P3s fixed; REAPER smoke `slice09-1782785591409` green; Slice 08 pushed at `c923df9` | none before commit unless desired |
 
-**9 / 9 v0.1 steps shipped; kernel hardening Slice 08 is now
+**9 / 9 v0.1 steps shipped; kernel hardening Slice 09 is now
 live-smoked and commit-ready.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
@@ -1032,16 +1193,18 @@ and pushed at `baa13bd`; Slice 02 was committed and pushed at
 `e93d39e`; Slice 03 was committed and pushed at `4e80839`; Slice 04
 was committed and pushed at `d3f8fe7`; Slice 05 was committed and
 pushed at `5ba6318`; Slice 06 was committed and pushed at `9f56ce0`;
-Slice 07 was committed and pushed at `9244be3`. Slice 08 is the
-current uncommitted H2 item_fade nullable-field verification slice,
-with static baseline, reviewer pass, and REAPER live smoke complete.
+Slice 07 was committed and pushed at `9244be3`; Slice 08 was committed
+and pushed at `c923df9`. Slice 09 is the current uncommitted H2
+`item_duplicate` creates-field verification slice, with static
+baseline, reviewer pass, and REAPER live smoke complete.
 
 ### Next action
 
-1. **Commit/push Slice 08 only if the user explicitly asks.**
+1. **Commit/push Slice 09 only if the user explicitly asks.**
    Static baseline, reviewer pass, and REAPER live smoke are green.
-2. **Start the next architect slice only after Slice 08 is either committed
-   or the user explicitly chooses to continue with it uncommitted.**
+2. **Start the next Architect slice only after Slice 09 is either
+   committed or the user explicitly chooses to continue with it
+   uncommitted.**
 3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
@@ -3704,12 +3867,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 08 is live-smoked and commit-ready.** Read
-   `docs/plans/SLICE_08_ARCHITECT_PLAN.md` before touching code.
-   Static baseline is green (`npm test` 263/263, build,
-   `check:manifest`, `check:error-codes-fresh`, `git diff --check`);
-   reviewer pass and REAPER 7.71/macOS-arm64 smoke are complete. Do
-   not commit unless the user explicitly asks.
+2. **Kernel hardening Slice 09 is live-smoked and commit-ready.** Read
+   `docs/plans/SLICE_09_ARCHITECT_PLAN.md` before touching code.
+   Static baseline is green (`npm test` 272/272, build,
+   `check:manifest`, `check:error-codes-fresh`, `git diff --check`).
+   Reviewer pass and REAPER 7.71/macOS-arm64 smoke are complete. Do not
+   commit unless the user explicitly asks.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

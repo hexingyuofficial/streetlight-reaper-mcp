@@ -366,6 +366,49 @@ describe("CapabilityRegistry", () => {
     });
   });
 
+  it("accepts creates expectedDelta field checks with a positive numeric count", () => {
+    const registerWithCount = (count: number) => {
+      const reg = new CapabilityRegistry();
+      reg.register({
+        name: `duplicate_checked_${count}`,
+        description: "duplicate checked",
+        pack: "test",
+        risk: "write_safe",
+        mutates: true,
+        undoable: true,
+        idempotent: false,
+        entity_kind: "item",
+        undo_flags: ["ITEMS"],
+        expectedDelta: {
+          count,
+          creates: true,
+          fields: [
+            { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+          ],
+        },
+        params: z.object({}),
+        result: z.object({}),
+        examples: [{ params: {} }],
+      });
+      return reg.list()[0]?.expectedDelta;
+    };
+
+    expect(registerWithCount(1)).toEqual({
+      count: 1,
+      creates: true,
+      fields: [
+        { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+      ],
+    });
+    expect(registerWithCount(3)).toEqual({
+      count: 3,
+      creates: true,
+      fields: [
+        { scope: "item", field: "D_POSITION", paramPath: "position", tolerance: 1e-6 },
+      ],
+    });
+  });
+
   it("deep-copies expectedDelta fields in metadata", () => {
     const reg = new CapabilityRegistry();
     reg.register({
@@ -517,9 +560,30 @@ describe("CapabilityRegistry", () => {
     expect(() =>
       registerWithExpectedDelta({
         count: 1,
-        creates: true,
+        maybeCreates: true,
         fields: [{ scope: "track", field: "P_NAME", paramPath: "name" }],
       }),
-    ).toThrow(/only supported for in-place templates/);
+    ).toThrow(/cannot coexist with maybeCreates/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        deletes: true,
+        fields: [{ scope: "item", field: "D_POSITION", paramPath: "position" }],
+      }),
+    ).toThrow(/cannot coexist with deletes/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: "any",
+        creates: true,
+        fields: [{ scope: "item", field: "D_POSITION", paramPath: "position" }],
+      }),
+    ).toThrow(/requires numeric count >= 1/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 0,
+        creates: true,
+        fields: [{ scope: "item", field: "D_POSITION", paramPath: "position" }],
+      }),
+    ).toThrow(/requires numeric count >= 1/);
   });
 });

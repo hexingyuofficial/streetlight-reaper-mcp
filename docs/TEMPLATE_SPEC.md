@@ -288,6 +288,7 @@ back the changed entity after the structural check passes but before
 | `item_fade` | `item` | `D_FADEOUTLEN` | `params.fade_out` when supplied; `null` coerces to `0` |
 | `item_trim` | `item` | `D_LENGTH` | `params.length` |
 | `item_trim` | `take` | `D_STARTOFFS` | `params.start_offset` when supplied |
+| `item_duplicate` | `item` | `D_POSITION` | `params.position` on the newly-created item |
 | `track_rename` | `track` | `P_NAME` | `params.name` |
 
 Numeric checks use absolute `tolerance` when declared. String checks use
@@ -317,9 +318,23 @@ length. Descriptor validation allows an all-optional `fields[]` list
 only when every field is also nullable, so a template cannot accidentally
 ship a pure no-op verifier.
 
-Field verification is intentionally not global yet. `item_duplicate`,
-`track_create`, `media_import`, `region_create`, and `render_region`
-remain Slice 09+ work.
+Slice 09 starts field verification on creates-style templates.
+`expectedDelta.fields[]` may coexist with `creates:true` only when
+`count` is a finite positive integer. The bridge verifies the entity
+named by `changed_ids[1]`; for `item_duplicate` that is the new
+`guid:{...}` item returned by the handler, so the existing item-scope
+reader can compare `D_POSITION` against `params.position`.
+
+The D5 relaxation is intentionally narrow. `fields[]` still cannot
+coexist with `maybeCreates:true`, `deletes:true`, or `creates:true`
+with `count:"any"`. Region field verification is also still closed:
+`fields[].scope` remains `take | item | track`, so `region_create`
+cannot opt into fields until a future slice adds region ref parsing and
+a region field reader.
+
+Field verification is intentionally not global yet. `track_create`,
+`media_import`, `region_create`, and `render_region` remain Slice 10+
+work.
 `render_region` still omits `expectedDelta` in v0.1 because it is
 deferred and returns an artifact path, not a project-entity ref.
 
