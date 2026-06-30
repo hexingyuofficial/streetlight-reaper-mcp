@@ -1348,10 +1348,10 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit Slice 19 / H6 closure."** Slice 19 is the current
-       uncommitted working tree. It is static-green and live-smoked on
-       REAPER `7.71/macOS-arm64`; H6's basic loop is closed. Commit/push
-       only if the user explicitly asks.
+   (a) **"Start the next architect packet."** Slice 19 is committed and
+       pushed at `e54fd9c`. It is static-green and live-smoked on
+       REAPER `7.71/macOS-arm64`; H6's basic loop is closed. Further
+       factory automation needs the next larger plan.
 
    (b) **"Codex/reviewer found a bug in Slice 19 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any

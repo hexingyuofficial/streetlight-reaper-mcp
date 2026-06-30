@@ -2115,7 +2115,7 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-18 ✅ pushed; Slice 19 ✅ live-smoked/static-green, uncommitted | Commit/push only on explicit user ask |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-19 ✅ pushed | H6 basic loop closed |
 | Tests | Slice 19: full 357/357, build / manifest / error-code / template-authoring / diff-check clean; manifest/template-authoring see 12 templates; live smoke `1782840178741` green | H6 basic loop closed |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
@@ -2170,20 +2170,19 @@ locally committed at `0996b5b`; reviewer Locke's docs-only follow-up is
 locally committed at `45e0193`; Slice 17 is static-green and saved as
 local commit `kernel-hardening: slice 17 define template helper`;
 Slice 17 reviewer follow-up is saved at `8f0b505`; Slice 18 is pushed
-at `88b0edf`; Slice 19 is live-smoked/static-green and uncommitted.
+at `88b0edf`; Slice 19 is live-smoked/static-green and pushed at
+`e54fd9c`.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Commit Slice 19 / H6 closure if asked.** `track_color` is
-   live-smoked and static-green. H6's basic loop is closed.
-2. **Next planning packet.** The current kernel-hardening H6 thread has
+1. **Next planning packet.** The current kernel-hardening H6 thread has
    reached its documented closure point. Further factory automation
    (write-mode scaffolder, batch template generation, FX/MIDI/routing
    packs) should come from the next larger architect plan.
-3. **Second-Mac smoke / v0.1 release tag remains available.**
+2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 

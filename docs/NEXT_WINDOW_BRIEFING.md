@@ -7,11 +7,10 @@ after Slice 19 live smoke.
 
 - Repo: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
-- Branch: `main`; latest pushed checkpoint in this local view is Slice
-  18: `88b0edf kernel-hardening: slice 18 dry-run template scaffolder`
-- Slice 19 is the current uncommitted working tree. It is static-green
-  and live-smoked on REAPER `7.71/macOS-arm64`; H6's basic loop is
-  closed. Do not commit or push until the user explicitly asks.
+- Branch: `main`; latest pushed checkpoint is Slice 19:
+  `e54fd9c kernel-hardening: slice 19 track color template`
+- Slice 19 is committed and pushed. It is static-green and live-smoked
+  on REAPER `7.71/macOS-arm64`; H6's basic loop is closed.
 - Public name: OpenReaper. Internal code paths and bridge names still use
   Streetlight.
 - Do not commit, push, reset, branch, or rewrite history unless the user
@@ -141,9 +140,7 @@ Pass criteria met:
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/TEMPLATE_AUTHORING.md`
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/KERNEL_HARDENING_PLAN.md`
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/KERNEL_HARDENING_EXECUTION.md`
-2. If asked to close Slice 19, rerun final static gates if desired, then
-   commit. Push only after the user explicitly asks.
-3. If asked for the next work item, request or read the next architect
+2. If asked for the next work item, request or read the next architect
    packet. H6's basic loop is closed; further factory automation needs a
    larger plan.
 
