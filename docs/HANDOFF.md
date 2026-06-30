@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 16 code-done; template authoring guide + lint)
+# Handoff — 2026-06-30 (Kernel Slice 16 reviewer follow-up; template authoring guide + lint)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -17,9 +17,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   `39bf940 kernel-hardening: slice 15 render dedup` (not pushed). It
   implements H4 Phase 2: `render_region` same-key retry replays the
   stored deferred terminal inner envelope instead of rendering again.
-  Slice 16 is code-done locally and static-green; it lands H6 Phase 0
-  — the template authoring guide (`docs/TEMPLATE_AUTHORING.md`) and a
-  new author-side static lint
+  Slice 16 is code-done locally, static-green, and saved as a local
+  commit at `0996b5b kernel-hardening: slice 16 template authoring
+  guide + lint` (not pushed). It lands H6 Phase 0 — the template
+  authoring guide (`docs/TEMPLATE_AUTHORING.md`) and a new author-side
+  static lint
   (`scripts/template-authoring-lint.mjs`, CLI
   `npm run check:template-authoring`) that enforces examples-against-Zod
   and TS file slug ↔ `definition.name` parity. Per S16-D5=a, Slice 16
@@ -60,7 +62,7 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
 - **Kernel hardening Slice 16 ✅ code-done / static-green /
-  uncommitted (2026-06-30).** Scope from
+  locally committed at `0996b5b` (2026-06-30).** Scope from
   `docs/plans/SLICE_16_ARCHITECT_PLAN.md`. This is **H6 Phase 0**: the
   template authoring contract and lint, no scaffolder yet.
   - New file `docs/TEMPLATE_AUTHORING.md` is the how-to for adding a
@@ -69,8 +71,9 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     register → Lua handler → manifest → tests → static gates),
     pitfalls (stale Lua chunks, INTERNAL_ERROR contract,
     errors-are-zero-mutation, `selected:N` snapshot rule,
-    `expectedDelta` verify cases, `render_region` deferred carve-out,
-    idempotency-key authority), how `examples[]` are consumed, and a
+    `expectedDelta` verify cases, `render_region` as the deferred
+    artifact-path template, idempotency-key authority), how `examples[]`
+    are consumed, and a
     forward-looking "Extending to a new entity_kind / new pack"
     section. `docs/TEMPLATE_SPEC.md` keeps the protocol contract and
     gains a one-line pointer back to AUTHORING.
@@ -108,6 +111,19 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     includes a forward-looking "Future" section; D5=a no REAPER live
     smoke; D6=a TS/docs reviewer focus only; D7=a local save-point
     commit only, no push during work-hours window.
+  - Reviewer Locke found no runtime blockers and confirmed C1/C2 plus
+    the no-REAPER-smoke call, but caught doc accuracy issues after the
+    local commit: risk values must be `read` / `write_safe` /
+    `filesystem` / `destructive` / `unsafe_eval` with `filesystem`
+    allowed by default; `check:manifest` does not statically prove
+    handler symbols or `entity_buckets` membership; new pack loading is
+    still future work because the bridge loads `core` explicitly. The
+    follow-up doc fix corrects those statements and updates this
+    handoff state; it is docs-only and currently uncommitted on top of
+    `0996b5b`. Follow-up gates are green: `npm test` 326/326,
+    `npm run build`, `npm run check:manifest`,
+    `npm run check:error-codes-fresh`, `npm run check:template-authoring`,
+    and `git diff --check`.
   - Zero runtime change: no Lua, no `streetlight_bridge.lua`, no
     `verify.lua`, no `manifest.lua` entry, no `expectedDelta` shape,
     no error codes, no wire fields, no MCP tools, no new templates.
@@ -117,13 +133,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     `npm run check:error-codes-fresh` 22 codes fresh,
     `npm run check:template-authoring` 11 templates ok,
     `git diff --check` clean.
-  - Per S16-D5=a no REAPER smoke. Reviewer pass remains pending; when
-    it lands (S16-D6=a), focus on (i) authoring guide vs current code
-    accuracy, (ii) lint catching real drift, (iii) human-readable
-    failure messages. Then local commit:
-    `kernel-hardening: slice 16 template authoring guide + lint`.
+  - Per S16-D5=a no REAPER smoke. Reviewer pass has run; no runtime
+    blockers were found. The only follow-up is the docs-only accuracy
+    fix above.
 - **Kernel hardening Slice 15 ✅ live-smoked / static-green /
-  uncommitted (2026-06-30).** Scope from
+  locally committed at `39bf940` (2026-06-30).** Scope from
   `docs/plans/SLICE_15_ARCHITECT_PLAN.md`:
   - Lifts the Slice 14 `render_region` exclusion from
     `dedup_eligible(cmd)`. Read paths still do not touch DEDUP.
@@ -1198,12 +1212,14 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Close Slice 15."** Static gates, reviewer pass, and REAPER
-       live smoke are green. Only commit if the user explicitly asks;
-       avoid push during work hours unless the user explicitly makes an
-       exception.
+   (a) **"Close Slice 16 reviewer follow-up."** Slice 16 is already
+       locally committed at `0996b5b`; reviewer Locke found docs-only
+       accuracy issues, and the current working tree fixes them. Static
+       gates are green. Make a local follow-up commit only if the user
+       explicitly asks. Avoid push during work hours unless the user
+       explicitly makes an exception.
 
-   (b) **"Codex/reviewer found a bug in Slice 15 or earlier."** Locked
+   (b) **"Codex/reviewer found a bug in Slice 16 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -1212,9 +1228,15 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** Slice 15 baseline is
-   focused suite 74/74, full `npm test` 313/313, build / manifest /
-   error-code / diff-check clean. REAPER smoke
+2. **Tests + build baseline this window:** Slice 16 baseline is full
+   `npm test` 326/326, `npm run build` clean,
+   `npm run check:manifest` green,
+   `npm run check:error-codes-fresh` green,
+   `npm run check:template-authoring` green, and `git diff --check`
+   clean. Slice 16 has no REAPER smoke by decision S16-D5=a because no
+   runtime changed. Slice 15 baseline was focused suite 74/74, full
+   `npm test` 313/313, build / manifest / error-code / diff-check
+   clean. REAPER smoke
    `slice15-1782819968415` is green on `7.71/macOS-arm64`; extra
    LAST_RESULT proof `slice15-lastresult-1782820030902` is green; queue
    cleanup ended `pending=0`, `running=0`, `done=0`. Slice 14

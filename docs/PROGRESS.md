@@ -11,8 +11,9 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 16 ✅ code-done / static-green / uncommitted
-(2026-06-30).** Architect packet lives at
+**Kernel hardening Slice 16 ✅ code-done / static-green / locally
+committed at `0996b5b` with docs-only reviewer follow-up in working
+tree (2026-06-30).** Architect packet lives at
 `docs/plans/SLICE_16_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 16 lands **H6 Phase
@@ -40,12 +41,18 @@ note in the H6 section. Static gates are green: full `npm test`
 `npm run check:error-codes-fresh` 22 codes fresh,
 `npm run check:template-authoring` 11 templates ok, and
 `git diff --check` clean. Per S16-D5=a no REAPER live smoke is required:
-nothing the bridge can see has changed. Local commit policy unchanged
-— the slice is staged for a save-point commit but is uncommitted at
-the time of this entry; no push during the work-hours window.
+nothing the bridge can see has changed. Local commit policy unchanged:
+Slice 16 is committed locally but not pushed during the work-hours
+window. Reviewer Locke then caught doc accuracy issues: the risk list
+invented `read_only` and omitted the already-shipped `filesystem`
+risk; `check:manifest` was overstated as proving handler symbols and
+`entity_buckets` membership; and the new-pack section implied bridge
+pack discovery already exists. The follow-up doc fix corrects those
+claims and keeps runtime untouched. Follow-up gates so far:
+`npm run check:template-authoring` green and `git diff --check` clean.
 
 **Kernel hardening Slice 15 ✅ live-smoked / static-green /
-uncommitted (2026-06-30).** Architect packet lives at
+locally committed at `39bf940` (2026-06-30).** Architect packet lives at
 `docs/plans/SLICE_15_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 15 implements H4
@@ -2039,8 +2046,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 ✅ live-smoked/static-green | Commit/versioning decision on explicit ask |
-| Tests | Slice 15: focused 74/74, full 313/313, build / manifest / error-code / diff-check clean; live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Commit only on explicit ask; avoid work-hours push unless the user explicitly makes an exception |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 + Slice 16 ✅ locally committed; Slice 16 reviewer follow-up docs-only in working tree | Commit follow-up only on explicit ask |
+| Tests | Slice 16: full 326/326, build / manifest / error-code / template-authoring / diff-check clean; Slice 15 live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Avoid work-hours push unless the user explicitly makes an exception |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -2088,17 +2095,18 @@ and pushed at `c923df9`; Slice 09 was committed and pushed at
 was committed and pushed at `f66b2db`; Slice 12 was committed and
 pushed at `6e4a02f`; Slice 13 was committed and pushed at `f998507`.
 Slice 14 was committed and pushed at `56c57cb` after live smoke
-`slice14-1782815129961`. Slice 15 is code-done, static-green, and
-live-smoked with run id `slice15-1782819968415`, waiting only for the
-user's commit/versioning decision.
+`slice14-1782815129961`. Slice 15 is locally committed at `39bf940`
+and live-smoked with run id `slice15-1782819968415`. Slice 16 is
+locally committed at `0996b5b`; reviewer Locke's docs-only follow-up is
+currently in the working tree and not yet committed.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Commit/versioning decision for Slice 15.** Static gates, reviewer
-   pass, and live REAPER smoke are green. Commit only if the user
+1. **Close Slice 16 reviewer follow-up.** Current working tree fixes
+   Locke's docs-only accuracy findings. Commit only if the user
    explicitly asks; avoid push during work hours unless the user
    explicitly makes an exception.
 2. **Second-Mac smoke / v0.1 release tag remains available.**

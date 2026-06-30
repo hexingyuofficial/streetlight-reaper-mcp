@@ -43,7 +43,7 @@ down at the top of your slice plan or PR description:
 | `name` (snake_case) | Goes on the wire, must be unique across the registry, must match the TS file slug. |
 | `entity_kind` (`item` / `track` / `region` / `render`, or new) | Routes `changed_ids` to the right `LAST_RESULT` bucket. New kinds need a manifest `entity_buckets` entry — see "Extending to a New entity_kind". |
 | `pack` (currently always `core`) | Tells `list_templates` consumers which capability bundle. New packs need their own dir under `reaper/packs/`. |
-| `risk` (`read_only` / `write_safe` / `destructive` / `unsafe_eval`) | v0.1 ships only `read_only` and `write_safe`. Anything else is blocked by `defaultPolicy()` and needs an explicit feature flag — out of scope here. |
+| `risk` (`read` / `write_safe` / `filesystem` / `destructive` / `unsafe_eval`) | v0.1's default policy allows `read`, `write_safe`, and `filesystem` (needed by `media_import` / `render_region`). `destructive` and `unsafe_eval` require explicit opt-in and are out of scope here. |
 | `mutates` (bool) | If true, the template can change project state. |
 | `undoable` (bool) | If true, the bridge wraps the handler in `undo.with_undo`. Must align with `undo_flags` and the `manifest.lua` entry. `render_region` is the only `mutates=true / undoable=false` case in v0.1 — see notes on it below. |
 | `undo_flags` (subset of `["TRACKCFG","FX","ITEMS","MISCCFG","FREEZE"]`) | Bits passed to `Undo_EndBlock2`. Must be exactly what the handler actually touches. |
@@ -273,15 +273,21 @@ templates = {
 }
 ```
 
-Rules the `check:manifest` gate enforces:
+Rules the `check:manifest` gate enforces today:
 
 - `entity_kind`, `undoable`, `undo_flags` agree with the TS
   `CapabilityDefinition`.
-- The handler symbol `<entity>_templates.foo_bar` resolves at module
-  load (Lua will error at `dofile` time if missing).
 - `undo_flags` is single-line (the parser does not accept multi-line `|`
   expressions).
-- `entity_kind` is a value that exists in `entity_buckets`.
+
+Rules it **does not** enforce yet:
+
+- Missing handler symbols. If `handler = item_templates.foo_bar` points
+  at a function that does not exist, the bridge currently catches it at
+  `call_template` time as `TEMPLATE_NOT_FOUND`; a future static lint may
+  catch it earlier.
+- `entity_kind` membership in `entity_buckets`. The bridge performs
+  runtime manifest validation; a future static lint may cover this.
 
 Use the matching `undo.UNDO_STATE_*` constants — `manifest-alignment.mjs`
 maps them to TS `["ITEMS","TRACKCFG",...]` for comparison.
@@ -425,11 +431,13 @@ name-shaped (`region:NAME`), region GUID refs are unsupported in v0.1,
 and the synthetic region handle exposes only `{index, pos, rgnend,
 name}`.
 
-### `render_region` is the deferred carve-out
+### `render_region` is the deferred artifact-path template
 
-It is the only `mutates=true / undoable=false` template in v0.1. It does
-not declare `expectedDelta`. Its terminal envelope is computed in a
-deferred slot (Slice 06+, Slice 15 made it DEDUP-eligible). If you are
+It is the only `mutates=true / undoable=false` template in v0.1 and the
+only template whose `changed_ids` are artifact paths rather than project
+refs. It does not declare `expectedDelta`. Its terminal envelope is
+computed in a deferred slot (Slice 06+, Slice 15 made it
+DEDUP-eligible). If you are
 authoring a new template that also has tens-of-seconds latency or
 produces an external artifact rather than project state, read the
 `render_region` handler and Slice 15 plan first; copy that pattern
@@ -514,10 +522,10 @@ second pack (e.g. `midi`, `fx`, `routing`, `automation`) needs:
 
 1. New directory `reaper/packs/<pack>/` with its own `manifest.lua`,
    `templates/`, and any pack-local helpers.
-2. The bridge already loads manifests data-driven; you do not need to
-   change `streetlight_bridge.lua` to add a pack. (Confirm against
-   current code — at time of Slice 16 the bridge loads `core` only;
-   adding pack discovery may itself be a separate slice.)
+2. A bridge pack-loading slice. As of Slice 16,
+   `streetlight_bridge.lua` still loads the `core` pack explicitly; adding
+   pack discovery / multi-pack loading is a separate runtime change, not
+   something the current authoring lint enables by itself.
 3. New entry in `registerCoreTemplates`-equivalent on the TS side, or
    factor `registerCoreTemplates` into `register<Pack>Templates(...)`
    and call all of them from the MCP server bootstrap.
