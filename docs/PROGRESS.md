@@ -11,8 +11,8 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 10 ✅ live-smoked / commit-pending
-(2026-06-30).** Architect packet lives at
+**Kernel hardening Slice 10 ✅ live-smoked, committed, and pushed
+(2026-06-30, `2babc5c`).** Architect packet lives at
 `docs/plans/SLICE_10_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 10 continues H2
@@ -1281,11 +1281,11 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-10 ✅; Slice 10 commit-pending | commit/push only if explicitly requested |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-10 ✅; Slice 10 pushed at `2babc5c` | Architect Slice 11 |
 | Tests | Slice 10: 278/278 green; build / manifest / error-code / diff-check clean; reviewer pass no P1/P2; REAPER S0-S17 green; Slice 09 pushed at `bf15daa` | none |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
-live-smoked and commit-pending.** Step 6 (render) closed
+live-smoked, committed, and pushed.** Step 6 (render) closed
 2026-06-29 after a Codex re-smoke against the post-restart single-chunk
 bridge (generation 1, full 6-0..6-9 roll-up green). Step 7 (recipe
 discovery + end-to-end demo) shipped 2026-06-29 in the same window:
@@ -1326,16 +1326,16 @@ was committed and pushed at `d3f8fe7`; Slice 05 was committed and
 pushed at `5ba6318`; Slice 06 was committed and pushed at `9f56ce0`;
 Slice 07 was committed and pushed at `9244be3`; Slice 08 was committed
 and pushed at `c923df9`; Slice 09 was committed and pushed at
-`bf15daa`. Slice 10 is the current uncommitted H2 `track_create`
-maybeCreates-field verification slice, with full static gates,
-reviewer pass, and REAPER S0-S17 smoke green.
+`bf15daa`; Slice 10 was committed and pushed at `2babc5c`.
+`docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
+blocks, technical moats, demo story, and "do not overclaim yet" language
+for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Commit/push Slice 10 only if the user explicitly asks.**
-   It is live-smoked and commit-ready.
-2. **Architect Slice 11 can start after Slice 10 is committed/pushed,
-   or earlier only if the user explicitly chooses that risk.**
+1. **Architect Slice 11.** Current likely target: `media_import` /
+   `count:"any"` field verification, unless Architect picks a different
+   risk-sorted next slice.
 3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
@@ -3998,12 +3998,12 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 10 is live-smoked and commit-pending.** Read
+2. **Kernel hardening Slice 10 is live-smoked and pushed at `2babc5c`.** Read
    `docs/plans/SLICE_10_ARCHITECT_PLAN.md` before touching code.
    Static baseline is green (`npm test` 278/278, build,
    `check:manifest`, `check:error-codes-fresh`, `git diff --check`).
    Reviewer pass and REAPER 7.71/macOS-arm64 S0-S17 smoke are green.
-   Do not commit unless the user explicitly asks.
+   Next likely kernel-hardening move is Architect Slice 11.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

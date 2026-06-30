@@ -1,12 +1,16 @@
-# Streetlight
+# OpenReaper
 
-Streetlight is an open-source REAPER agent kernel.
+OpenReaper is an open-source MCP bridge and agent kernel for REAPER,
+developed by Streetlight Studio. The internal code name is still
+Streetlight in many package names, logs, and paths; the public project
+name is OpenReaper. OpenReaper is independent and unofficial; it is not
+affiliated with Cockos or the REAPER project.
 
 The first goal is deliberately small: let any MCP-capable agent control REAPER through safe, typed, testable, undoable operations. Game audio is the first official workflow pack, not the limit of the system.
 
 ## What It Does
 
-Streetlight exposes a compact tool surface for agents:
+OpenReaper exposes a compact tool surface for agents:
 
 - inspect the current REAPER project state
 - import and arrange audio
@@ -17,11 +21,11 @@ Streetlight exposes a compact tool surface for agents:
 
 The intended first workflow:
 
-> Select or provide a source sound, ask an agent for impact/weapon/UI/foley variations, then let Streetlight create edited items, regions, and rendered WAV files in REAPER.
+> Select or provide a source sound, ask an agent for impact/weapon/UI/foley variations, then let OpenReaper create edited items, regions, and rendered WAV files in REAPER.
 
 ## Why This Shape
 
-LLMs are useful at planning sound design work, but unreliable when they freely write REAPER Lua. Streetlight keeps the creative planning in the agent and moves DAW manipulation into tested templates with explicit schemas.
+LLMs are useful at planning sound design work, but unreliable when they freely write REAPER Lua. OpenReaper keeps the creative planning in the agent and moves DAW manipulation into tested templates with explicit schemas.
 
 That gives the project three useful properties:
 
@@ -31,7 +35,7 @@ That gives the project three useful properties:
 
 ## How To Run The Impact-Variations Demo
 
-This is the v0.1 acceptance demo: from one selected media item, Streetlight
+This is the v0.1 acceptance demo: from one selected media item, OpenReaper
 produces 8 named variations on a new track, wraps each in a region, and
 renders them to 8 WAV files.
 
@@ -46,12 +50,14 @@ Then register the generated launcher in REAPER (Actions → Show action
 list → ReaScript: Load... →
 `~/Library/Application Support/REAPER/Scripts/Streetlight/start_bridge.lua`)
 and copy the snippet from `setup-out/<your-client>.*` into your MCP
-client config. Windows has `install.cmd` / `install.ps1` as an
+client config. The launcher path still says `Streetlight` because that is
+the v0.1 internal kernel name and compatibility path. Windows has
+`install.cmd` / `install.ps1` as an
 experimental convenience path, but v0.1 live verification is macOS.
 Full details in [docs/INSTALL.md](docs/INSTALL.md); cross-Mac
 reproducer in [docs/CROSS_MAC_SMOKE.md](docs/CROSS_MAC_SMOKE.md).
 
-1. **REAPER 7.x is running** with the Streetlight bridge loaded.
+1. **REAPER 7.x is running** with the OpenReaper / Streetlight bridge loaded.
    The console (`View → Show console`) shows `bridge ready (generation N) — templates: …`.
    See [docs/INSTALL.md](docs/INSTALL.md).
 2. **"Render in background" is ON.** `REAPER → Preferences → Audio → Rendering →
@@ -78,7 +84,7 @@ reproducer in [docs/CROSS_MAC_SMOKE.md](docs/CROSS_MAC_SMOKE.md).
 In your MCP-capable agent, send:
 
 ```text
-Use Streetlight to make 8 impact variations from the selected item.
+Use OpenReaper to make 8 impact variations from the selected item.
 First call list_recipes and follow impact_variations step by step,
 rendering all 8 WAVs to /absolute/path/to/your/output_dir.
 ```
@@ -123,7 +129,7 @@ Recoverable errors the agent will see and can usually retry past:
 - `BRIDGE_NOT_RUNNING` on `render_region` — usually means "Render in
   background" is OFF; see prerequisite #2
 
-`list_recipes` is a doc — Streetlight does NOT execute the recipe for you.
+`list_recipes` is a doc — OpenReaper does NOT execute the recipe for you.
 The agent reads the YAML and issues one `call_template` per step. If you'd
 prefer to drive the loop yourself, the templates and parameters are all
 listed in `recipes/impact_variations.yaml`.

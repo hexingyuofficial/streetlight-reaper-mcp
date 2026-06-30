@@ -1,11 +1,11 @@
 {
-  "_comment": "Streetlight MCP server configuration for Claude Code. Pick the snippet that matches your OS, replace the absolute path, and remove this _comment key. Paths containing spaces work as-is in JSON strings; do NOT add extra quoting.",
+  "_comment": "OpenReaper MCP server configuration for Claude Code. Public project name: OpenReaper; internal MCP server key remains streetlight for v0.1 compatibility. Pick the snippet that matches your OS, replace the absolute path, and remove this _comment key. Paths containing spaces work as-is in JSON strings; do NOT add extra quoting.",
 
   "mcpServers": {
     "streetlight": {
       "command": "node",
       "args": [
-        "/Users/your-name/code/streetlight-reaper-mcp/packages/mcp-server/dist/index.js"
+        "/Users/your-name/code/openreaper/packages/mcp-server/dist/index.js"
       ],
       "env": {
         "STREETLIGHT_QUEUE_DIR": "/Users/your-name/Library/Application Support/Streetlight/queue"
@@ -18,7 +18,7 @@
       "streetlight": {
         "command": "node",
         "args": [
-          "C:\\Users\\your-name\\code\\streetlight-reaper-mcp\\packages\\mcp-server\\dist\\index.js"
+          "C:\\Users\\your-name\\code\\openreaper\\packages\\mcp-server\\dist\\index.js"
         ],
         "env": {
           "STREETLIGHT_QUEUE_DIR": "C:\\Users\\your-name\\AppData\\Roaming\\Streetlight\\queue"

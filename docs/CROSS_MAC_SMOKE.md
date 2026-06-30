@@ -1,4 +1,4 @@
-# Cross-Mac Smoke Checklist — v0.1 release-candidate
+# OpenReaper Cross-Mac Smoke Checklist — v0.1 release-candidate
 
 Reproduce the current v0.1 release-candidate on a second Mac. Goal:
 prove that a fresh clone of the release-candidate installs, builds,
@@ -19,8 +19,8 @@ Use the Git remote once the release-prep setup/launcher commit has
 been pushed:
 
 ```bash
-git clone <streetlight-repo-url> streetlight-reaper-mcp
-cd streetlight-reaper-mcp
+git clone <openreaper-repo-url> openreaper
+cd openreaper
 git status --short            # should be empty
 ```
 
@@ -30,8 +30,8 @@ before pushing, use `rsync` instead and skip `node_modules`:
 ```bash
 # On the source Mac:
 rsync -av --exclude='node_modules' --exclude='.DS_Store' \
-  "/Users/Zhuanz/Documents/streetlight-reaper-mcp/" \
-  destmac:"~/Documents/streetlight-reaper-mcp/"
+  "/Users/Zhuanz/Documents/openreaper/" \
+  destmac:"~/Documents/openreaper/"
 ```
 
 That fallback is for pre-push portability debugging only. The normal
@@ -44,7 +44,7 @@ For a beginner-style install on macOS, you can double-click
 expanded so failures are easier to pinpoint.
 
 ```bash
-cd ~/Documents/streetlight-reaper-mcp
+cd ~/Documents/openreaper
 node --version                # confirm ≥ 20
 npm install                   # rebuilds node_modules from package-lock.json
 npm run build                 # tsc -b, should be silent

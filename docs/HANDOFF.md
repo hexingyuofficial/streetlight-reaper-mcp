@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 10 ✅ live-smoked; track_create maybeCreates field verification)
+# Handoff — 2026-06-30 (Kernel Slice 10 ✅ pushed; track_create maybeCreates field verification)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -9,9 +9,8 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   01, `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03,
   `d3f8fe7` Kernel Slice 04, `5ba6318` Kernel Slice 05, and
   `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07,
-  `c923df9` Kernel Slice 08, and `bf15daa` Kernel Slice 09. The
-  current working tree is **Kernel hardening Slice 10** (uncommitted,
-  live-smoked, commit-pending): H2 field-level verification now covers
+  `c923df9` Kernel Slice 08, `bf15daa` Kernel Slice 09, and
+  `2babc5c` Kernel Slice 10. H2 field-level verification now covers
   `track_create`, the first `maybeCreates:true` template with
   `expectedDelta.fields[]`. The user
   manages versioning out-of-band — do NOT commit, branch, push, or
@@ -22,8 +21,12 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   `git diff --check` → clean. Reviewer pass completed with no P1/P2
   issues; the only P3 doc nits were fixed in the pre-smoke handoff sync.
   REAPER live smoke S0-S17 passed on REAPER 7.71/macOS-arm64.
-- **Kernel hardening Slice 10 ✅ live-smoked
-  (2026-06-30, commit-pending).** Scope from
+- `docs/PUBLIC_STORY.md` is the living public narrative / launch-copy
+  source. Update it whenever a capability becomes implemented and
+  live-smoked. Keep future-facing claims phrased as roadmap until they
+  are real.
+- **Kernel hardening Slice 10 ✅ live-smoked / committed and pushed
+  (2026-06-30, `2babc5c`).** Scope from
   `docs/plans/SLICE_10_ARCHITECT_PLAN.md`:
   - `track_create` keeps its locked success envelope and
     `expectedDelta={count:1,maybeCreates:true}`, but adds one field
@@ -764,9 +767,9 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Commit/push Slice 10."** Full static gates, reviewer pass,
-       and REAPER S0-S17 live smoke are green. Commit only if the user
-       explicitly asks; then push to `origin/main`.
+   (a) **"Start Architect Slice 11."** Slice 10 is pushed at `2babc5c`.
+       Ask Architect for the next plan packet, likely around
+       `media_import` / `count:"any"` field verification.
 
    (b) **"Codex/reviewer found a bug in Slice 10 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any

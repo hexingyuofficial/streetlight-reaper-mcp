@@ -47,7 +47,7 @@ as the only supported path.
 
 ### 1. Beginner Install (Recommended For Non-Developers)
 
-Download or clone the Streetlight repo, then use the one-click helper:
+Download or clone the OpenReaper repo, then use the one-click helper:
 
 - macOS: double-click `install.command`.
 - Windows: double-click `install.cmd` (experimental; not yet live
@@ -79,7 +79,7 @@ newer and run it again.
 
 ### 2. Developer Install
 
-From the Streetlight repo:
+From the OpenReaper repo:
 
 ```bash
 npm install
