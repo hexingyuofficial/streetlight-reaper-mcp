@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 15 live-smoked; render_region deferred dedup)
+# Handoff — 2026-06-30 (Kernel Slice 16 code-done; template authoring guide + lint)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -13,13 +13,29 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   `2babc5c` Kernel Slice 10, `f66b2db` Kernel Slice 11,
   `6e4a02f` Kernel Slice 12, `f998507` Kernel Slice 13, and
   `56c57cb` Kernel Slice 14. Slice 15 is code-done locally,
-  static-green, and live-smoked. It implements H4 Phase 2:
-  `render_region` same-key retry now replays the stored deferred
-  terminal inner envelope instead of rendering again. The user manages
-  versioning out-of-band — do NOT commit, branch, push, or reset
-  without an explicit ask. New user preference: local commits are okay
-  as explicit save points, but avoid pushing during work hours unless
-  the user explicitly makes an exception.
+  static-green, live-smoked, and saved as a local commit at
+  `39bf940 kernel-hardening: slice 15 render dedup` (not pushed). It
+  implements H4 Phase 2: `render_region` same-key retry replays the
+  stored deferred terminal inner envelope instead of rendering again.
+  Slice 16 is code-done locally and static-green; it lands H6 Phase 0
+  — the template authoring guide (`docs/TEMPLATE_AUTHORING.md`) and a
+  new author-side static lint
+  (`scripts/template-authoring-lint.mjs`, CLI
+  `npm run check:template-authoring`) that enforces examples-against-Zod
+  and TS file slug ↔ `definition.name` parity. Per S16-D5=a, Slice 16
+  is TS/docs-only and does not need a REAPER live smoke. The user
+  manages versioning out-of-band — do NOT commit, branch, push, or
+  reset without an explicit ask. User preference (2026-06-29): local
+  commits are okay as explicit save points, but avoid pushing during
+  work hours unless the user explicitly makes an exception.
+- Slice 16 static baseline: full `npm test` → **326/326 green**
+  (Slice 15 baseline 313/313 plus 13 new lint tests in
+  `scripts/__tests__/template-authoring-lint.test.mjs`),
+  `npm run build` → clean, `npm run check:manifest` → 11 templates
+  aligned, `npm run check:error-codes-fresh` → 22 codes fresh,
+  `npm run check:template-authoring` → 11 templates ok, and
+  `git diff --check` → clean. No REAPER smoke run (intentional;
+  S16-D5=a).
 - Slice 15 static baseline: focused suite **74/74 green**, full
   `npm test` → **313/313 green**, `npm run build` → clean,
   `npm run check:manifest` → 11 templates aligned,
@@ -43,6 +59,69 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
+- **Kernel hardening Slice 16 ✅ code-done / static-green /
+  uncommitted (2026-06-30).** Scope from
+  `docs/plans/SLICE_16_ARCHITECT_PLAN.md`. This is **H6 Phase 0**: the
+  template authoring contract and lint, no scaffolder yet.
+  - New file `docs/TEMPLATE_AUTHORING.md` is the how-to for adding a
+    new OpenReaper template. It walks the pre-flight checklist, the
+    five-file change map, the step-by-step (TS definition →
+    register → Lua handler → manifest → tests → static gates),
+    pitfalls (stale Lua chunks, INTERNAL_ERROR contract,
+    errors-are-zero-mutation, `selected:N` snapshot rule,
+    `expectedDelta` verify cases, `render_region` deferred carve-out,
+    idempotency-key authority), how `examples[]` are consumed, and a
+    forward-looking "Extending to a new entity_kind / new pack"
+    section. `docs/TEMPLATE_SPEC.md` keeps the protocol contract and
+    gains a one-line pointer back to AUTHORING.
+  - New file `scripts/template-authoring-lint.mjs` exports pure helpers
+    (`templateSlug`, `formatZodIssues`, `findExampleSchemaMismatches`,
+    `findSlugMismatches`, `lintDefinitions`, `readTemplateFilenames`)
+    plus a CLI entry. Two checks fail-loud: (1) every
+    `definition.examples[i].params` must `parse()` on the template's
+    own Zod schema (`EXAMPLE_REJECTED_BY_SCHEMA:<name>:examples[<i>]`);
+    (2) every TS file under `packages/mcp-server/src/templates/` must
+    correspond to a registered template whose
+    `name.replace(/_/g, "-")` equals the file basename
+    (`SLUG_MISSING_FILE:<name>` / `SLUG_ORPHAN_FILE:<file>`), excluding
+    `_shared.ts` and `index.ts`.
+  - New file `scripts/__tests__/template-authoring-lint.test.mjs`
+    holds 13 vitest cases: helper-level assertions
+    (`templateSlug`, `formatZodIssues`), positive fixture
+    (everything-parses), negative fixtures (numeric out of range,
+    `.strict()` violation, indexed multi-example), slug
+    missing/orphan/clean, `lintDefinitions` concatenation, and the
+    real-registry assertion that all 11 shipped templates pass both
+    checks today.
+  - `package.json` gains `"check:template-authoring": "npm run build
+    --silent && node scripts/template-authoring-lint.mjs"` (S16-C1:
+    dist-based CLI mirrors `check:manifest`; vitest tests may import
+    the helpers from src/ side because vitest is the workspace's
+    TS-aware harness).
+  - Convention locked at S16-C2: `examples[]` is positive-only. There
+    is no `@example-invalid` / skip marker. Reverse fixtures live
+    exclusively under `scripts/__tests__/`.
+  - Decisions locked by user: S16-D1=a TEMPLATE_AUTHORING.md is
+    separate from TEMPLATE_SPEC.md; D2=a only examples-against-Zod +
+    slug parity; D3=a new independent lint script and npm entry, not
+    an extension of `manifest-alignment.mjs`; D4=a authoring guide
+    includes a forward-looking "Future" section; D5=a no REAPER live
+    smoke; D6=a TS/docs reviewer focus only; D7=a local save-point
+    commit only, no push during work-hours window.
+  - Zero runtime change: no Lua, no `streetlight_bridge.lua`, no
+    `verify.lua`, no `manifest.lua` entry, no `expectedDelta` shape,
+    no error codes, no wire fields, no MCP tools, no new templates.
+  - Static gates green: `npm test` 326/326 (Slice 15 baseline 313/313
+    + 13 new lint tests), `npm run build` clean,
+    `npm run check:manifest` 11 templates aligned,
+    `npm run check:error-codes-fresh` 22 codes fresh,
+    `npm run check:template-authoring` 11 templates ok,
+    `git diff --check` clean.
+  - Per S16-D5=a no REAPER smoke. Reviewer pass remains pending; when
+    it lands (S16-D6=a), focus on (i) authoring guide vs current code
+    accuracy, (ii) lint catching real drift, (iii) human-readable
+    failure messages. Then local commit:
+    `kernel-hardening: slice 16 template authoring guide + lint`.
 - **Kernel hardening Slice 15 ✅ live-smoked / static-green /
   uncommitted (2026-06-30).** Scope from
   `docs/plans/SLICE_15_ARCHITECT_PLAN.md`:

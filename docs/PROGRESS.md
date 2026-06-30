@@ -11,6 +11,39 @@ first.
 
 ## Current Status
 
+**Kernel hardening Slice 16 ✅ code-done / static-green / uncommitted
+(2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_16_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 16 lands **H6 Phase
+0**: the template authoring guide (`docs/TEMPLATE_AUTHORING.md`) and a
+new author-side static lint (`scripts/template-authoring-lint.mjs`,
+`npm run check:template-authoring`) that enforces two contracts the
+reviewer used to catch by eye — (1) every `definition.examples[i].params`
+must `parse()` on the template's own Zod schema, (2) the TS file slug
+(`<kebab>.ts` under `packages/mcp-server/src/templates/`) must equal
+`definition.name.replace(/_/g, "-")` in both directions (no missing
+file, no orphan file). Decisions locked by user: S16-D1 through S16-D7
+all recommended values (`a`), with two explicit corrections: S16-C1
+the new CLI runs `npm run build --silent && node
+scripts/template-authoring-lint.mjs` (mirrors `check:manifest`; dist-based
+CLI, vitest may import src/ helpers), and S16-C2 `examples[]` is
+positive-only — no `@example-invalid` marker — and reverse fixtures live
+exclusively in `scripts/__tests__/template-authoring-lint.test.mjs`.
+Zero runtime change: no Lua, no bridge, no `expectedDelta` shape, no
+error codes, no wire fields, no MCP tools, no new templates. `docs/TEMPLATE_SPEC.md`
+gains a one-line pointer to the authoring guide; `docs/plans/KERNEL_HARDENING_PLAN.md`
+and `docs/plans/KERNEL_HARDENING_EXECUTION.md` each pick up a Slice 16
+note in the H6 section. Static gates are green: full `npm test`
+**326/326** (Slice 15 baseline 313/313 + 13 new lint tests),
+`npm run build` clean, `npm run check:manifest` 11 templates aligned,
+`npm run check:error-codes-fresh` 22 codes fresh,
+`npm run check:template-authoring` 11 templates ok, and
+`git diff --check` clean. Per S16-D5=a no REAPER live smoke is required:
+nothing the bridge can see has changed. Local commit policy unchanged
+— the slice is staged for a save-point commit but is uncommitted at
+the time of this entry; no push during the work-hours window.
+
 **Kernel hardening Slice 15 ✅ live-smoked / static-green /
 uncommitted (2026-06-30).** Architect packet lives at
 `docs/plans/SLICE_15_ARCHITECT_PLAN.md`; source master plans remain

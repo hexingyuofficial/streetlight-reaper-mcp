@@ -334,6 +334,16 @@ entity_kind）、`errors.ts`（码）。新增模板要在多处接线。
   新测试 + manifest 校验（H5）。
 - 生成的 handler 默认带 undo block 与 verify 钩子（I7/I10）。
 
+2026-06-30 note: Slice 16 lands H6 Phase 0 — the authoring guide
+(`docs/TEMPLATE_AUTHORING.md`) and a new static lint
+(`scripts/template-authoring-lint.mjs`, `npm run check:template-authoring`)
+that enforces examples-against-Zod and TS file slug ↔ `definition.name`
+parity. Examples are positive-only by convention; negative fixtures live
+exclusively in the lint's own tests. The TS-side `defineTemplate({ ... })`
+helper (Slice 17 candidate) and the full-stack scaffolder CLI (Slice 18
+candidate) come later. Slice 16 is TS/docs-only; no Lua runtime, wire,
+schema, or error-code change, and no REAPER live smoke needed.
+
 > **这一项回答了你的问题「内核稳了能不能走捷径追上广度」**：能。H6 之后，REAPER
 > 有限的 ReaScript API 表面可被**批量描述符 → 批量生成 → 批量验证**，每个模板都带
 > H2 的校验契约。对手的 80 个手写工具没有 verify，你的 200 个生成工具每个都有。

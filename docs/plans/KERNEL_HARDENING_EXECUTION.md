@@ -391,6 +391,20 @@ deferred slot and never updates `LAST_RESULT`.
 ### DoD
 「填描述符 → 生成脚手架 → 补 3–5 行 API → 绿」成为加模板的标准路径,且每个生成模板都带 H2 校验。
 
+2026-06-30 Slice 16 execution note: Phase 0 = docs + lint only. The slice
+adds `docs/TEMPLATE_AUTHORING.md` as the author how-to and
+`scripts/template-authoring-lint.mjs` (CLI `npm run
+check:template-authoring`) as the static gate. The CLI mirrors
+`check:manifest`: `npm run build --silent && node ...mjs`. Vitest tests
+import the helper directly from `scripts/template-authoring-lint.mjs` and
+use synthetic Zod fixtures (positive AND negative). Slice 16 does NOT touch
+`reaper/**`, `manifest.lua`, `verify.lua`, `streetlight_bridge.lua`,
+`errors.ts`, or any wire shape. No REAPER restart, no live smoke; static
+gates (build / test / check:manifest / check:error-codes-fresh /
+check:template-authoring / diff-check) are sufficient. Slice 17 (TS
+`defineTemplate({...})` helper) and Slice 18 (scaffolder CLI) extend this
+foundation.
+
 ---
 
 ## H7 — 传输升级（可选 socket，契约不变）

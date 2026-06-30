@@ -4,6 +4,14 @@ Templates are the safe operation layer between agents and REAPER.
 
 Agents choose templates and provide parameters. They should not write raw Lua for normal workflows.
 
+> **Authoring vs contract.** This file is the **protocol contract** —
+> what envelopes look like, what error codes mean, how `expectedDelta` is
+> evaluated at runtime, the ref grammar. If you are adding a *new*
+> template, start at [`docs/TEMPLATE_AUTHORING.md`](TEMPLATE_AUTHORING.md)
+> — it is the step-by-step how-to that points back here for protocol
+> details. The two files are deliberately split; this one does not
+> repeat the authoring walkthrough.
+
 ## Schema Source Of Truth
 
 Each template has a single schema definition in `packages/core/src/registry.ts` written as a Zod schema. Two artifacts are derived from it automatically:

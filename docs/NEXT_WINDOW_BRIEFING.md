@@ -1,7 +1,7 @@
 # Next Window Briefing — 2026-06-30
 
 Use this as the first read after a context reset. It is the current truth during
-Slice 15.
+Slice 16.
 
 ## Snapshot
 
@@ -9,98 +9,117 @@ Slice 15.
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
 - Branch: `main`; latest pushed commit is Slice 14:
   `56c57cb kernel-hardening: slice 14 idempotency tokens`
-- Current local work: Slice 15 code-done/static-green/live-smoked, not
-  committed.
+- Local commits ahead of origin: Slice 15 (`39bf940 kernel-hardening:
+  slice 15 render dedup`). Slice 16 is code-done/static-green and
+  uncommitted at the moment of this writing; the planned commit message
+  is `kernel-hardening: slice 16 template authoring guide + lint`.
 - Public name: OpenReaper. Internal code paths and bridge names still use
   Streetlight.
 - Do not commit, push, reset, branch, or rewrite history unless the user
-  explicitly asks. New user preference: local commits are okay as explicit save
-  points, but avoid pushing during work hours unless the user explicitly makes an
-  exception.
+  explicitly asks. User preference (2026-06-29): local commits are okay as
+  explicit save points, but avoid pushing during work hours unless the user
+  explicitly makes an exception.
 - Do not stage or touch the nested ignored `style-memory-mcp/` project.
 
 ## Latest Verified Commit
 
-Slice 14 is complete, live-smoked, committed, and pushed.
+Slice 14 is the most recent pushed commit (`56c57cb`).
 
-- `call_template` accepts optional caller-provided `idempotency_key`.
-- Bridge DEDUP is in-memory FIFO, cap 256.
-- Synchronous mutating templates replay successes and typed errors.
-- `INTERNAL_ERROR` terminals are not stored.
-- Replay does not call handlers, open undo, re-run H2 verify, or update
-  `LAST_RESULT`.
-- REAPER smoke run `slice14-1782815129961` passed on `7.71/macOS-arm64`.
-- Commit-time gates: focused 83/83, full `npm test` 309/309, build clean,
-  manifest clean, error-code audit clean, diff-check clean.
+Slice 15 is locally committed at `39bf940` (live-smoked, not pushed). It
+extended H4 to deferred `render_region`.
 
 ## Current Slice
 
-Slice 15 implements H4 Phase 2: `render_region` deferred dedup.
+Slice 16 implements **H6 Phase 0 — Template Authoring Guide + Authoring Lint**.
 
-What changed:
+What landed:
 
-- `render_region` is no longer excluded from `dedup_eligible(cmd)`.
-- The deferred slot carries `idempotency_key`.
-- When deferred `close_with(inner)` reaches a terminal result, it stores the
-  inner envelope in DEDUP before writing the done envelope, unless the inner
-  error is `INTERNAL_ERROR`.
-- Later same-key `render_region` calls replay before dispatch. They do not call
-  the handler, enter `DEFERRED`, open render settings, delete sidecars, or update
-  `LAST_RESULT.renders`.
-- Successes and typed render errors are replayable.
-- `INTERNAL_ERROR` is not stored, so the next same-key attempt re-executes.
-- Stale-WAV semantics are explicit: if the original WAV is deleted, replay still
-  returns the stored path. A fresh render attempt requires a fresh key.
-- `render_region.idempotent=false` stays unchanged; DEDUP is transport-level
-  retry safety, not semantic idempotency.
+- `docs/TEMPLATE_AUTHORING.md` — the author how-to. Walks the
+  pre-flight checklist, file map, step-by-step, pitfalls catalogue
+  (stale Lua chunks, INTERNAL_ERROR contract, zero-mutation-on-error,
+  `selected:N` snapshot semantics, `expectedDelta` enforcement,
+  `render_region` deferred carve-out, idempotency-key authority), how
+  `examples[]` are consumed, and a forward-looking
+  "Extending to a new entity_kind / new pack" section.
+- `docs/TEMPLATE_SPEC.md` gains a one-line pointer back to AUTHORING; the
+  spec stays as the protocol contract.
+- `scripts/template-authoring-lint.mjs` — exports pure helpers and a CLI.
+  Enforces (1) `examples[i].params` must `parse()` on the template's
+  own Zod schema and (2) the TS file slug under
+  `packages/mcp-server/src/templates/` must equal
+  `definition.name.replace(/_/g, "-")` in both directions.
+- `scripts/__tests__/template-authoring-lint.test.mjs` — 13 vitest
+  cases: helper-level, positive fixture, multiple reverse fixtures,
+  slug missing / orphan / clean, lintDefinitions concatenation, and
+  the real-registry positive assertion across all 11 shipped templates.
+- `package.json` — new script `"check:template-authoring": "npm run
+  build --silent && node scripts/template-authoring-lint.mjs"`. Mirrors
+  `check:manifest`: dist-based CLI, vitest may import src/ helpers
+  directly.
+- `docs/plans/KERNEL_HARDENING_PLAN.md` H6 — added a 2026-06-30 Slice 16
+  note.
+- `docs/plans/KERNEL_HARDENING_EXECUTION.md` H6 — added a 2026-06-30
+  Slice 16 execution note.
+
+Locked corrections in this slice:
+
+- **S16-C1**: `check:template-authoring` runs `npm run build --silent`
+  first, then `node scripts/template-authoring-lint.mjs`. The CLI loads
+  the compiled `packages/core/dist/registry.js` and
+  `packages/mcp-server/dist/templates/index.js`; vitest tests may
+  continue to import TS source helpers because vitest is the
+  workspace's TS-aware harness.
+- **S16-C2**: `examples[]` is positive-only. No `@example-invalid` /
+  skip marker. Negative / "should be rejected" fixtures live
+  exclusively under `scripts/__tests__/`.
+
+What did NOT change:
+
+- No Lua runtime files.
+- No `streetlight_bridge.lua`, `verify.lua`, `manifest.lua`, `refs.lua`,
+  `undo.lua`, or any handler.
+- No `expectedDelta` shape, no error codes, no wire fields, no MCP tool
+  surface (still exactly five), no new templates.
+- No bridge restart required.
 
 Static status:
 
-- Focused suite: 74/74 green.
-- Full `npm test`: 313/313 green.
+- `npm test`: **326/326** green (Slice 15 baseline 313/313 + 13 new
+  lint tests).
 - `npm run build`: clean.
-- `npm run check:manifest`: green, 11 templates aligned.
-- `npm run check:error-codes-fresh`: green, 22 codes fresh.
+- `npm run check:manifest`: 11 templates aligned.
+- `npm run check:error-codes-fresh`: 22 codes fresh.
+- `npm run check:template-authoring`: 11 templates ok.
 - `git diff --check`: clean.
 
 Reviewer + live smoke:
 
-- Reviewer Meitner found no P1/P2/P3 issues.
-- REAPER live smoke passed on `7.71/macOS-arm64`.
-- Main run id: `slice15-1782819968415`.
-- Extra LAST_RESULT proof: `slice15-lastresult-1782820030902`.
-- Core proof: keyed `render_region` first rendered
-  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/slice15-1782819968415/renders/slice15-1782819968415-region-a.wav`;
-  same-key replay returned the same path with unchanged size/mtime
-  (`101536`, `1782819975510.6753`).
-- Typed render error replay passed for `OUTPUT_DIR_MISSING`.
-- `OUTPUT_FILE_EXISTS` terminal lock replayed after conflict removal; a fresh key
-  rendered successfully.
-- Replay did not update `LAST_RESULT.renders`; an anchored
-  `LAST_RESULT.tracks` survived render replay and
-  `track_rename last_result:track:0` succeeded afterward.
-- Representative regressions passed: synchronous Slice 14 dedup, typed
-  `ITEM_NOT_FOUND` replay, `track_create`, `media_import
-  last_result:track:0`, `get_state tracks include:["fx"]`, and render sidecar
-  cleanup.
-- Queue cleanup ended `pending=0`, `running=0`, `done=0`; only `bridge_owner`
-  remained.
-- Bridge-reload-clears-DEDUP was not live-run to avoid disrupting the user's
-  active generation-1 bridge. DEDUP is still chunk-local / bridge-lifetime
-  scoped by construction.
+- Per S16-D6=a, run one TS/docs reviewer pass focused on (i) the
+  authoring guide accurately reflects current code, (ii) the lint
+  catches real drift, (iii) failure messages are
+  pinpoint-actionable.
+- Per S16-D5=a, **no REAPER live smoke**. Zero runtime delta means
+  nothing the bridge can see has changed; static gates plus a
+  TS/docs reviewer are sufficient.
 
 ## Workflow To Continue
 
 1. Read:
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/HANDOFF.md`
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/PROGRESS.md`
-   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/SLICE_15_ARCHITECT_PLAN.md`
-2. Slice 15 is ready for commit when the user explicitly asks.
-3. If the user asks for the next hardening step, wait for or request the next
+   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/SLICE_16_ARCHITECT_PLAN.md`
+   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/TEMPLATE_AUTHORING.md`
+2. Slice 16 is ready for a reviewer pass and a local save-point commit
+   when the user explicitly asks. Planned commit message:
+   `kernel-hardening: slice 16 template authoring guide + lint`.
+3. If the user asks for the next hardening step (H6 Phase 1 = Slice 17
+   candidate, TS-side `defineTemplate({ ... })` helper; Phase 2 =
+   Slice 18 candidate, scaffolder CLI), wait for or request the next
    Architect packet before coding.
-4. Commit only after the user explicitly asks. Push only if the user explicitly
-   asks and it is not inside their work-hours no-push window, unless they make a
-   clear exception.
+4. Commit only after the user explicitly asks. Push only if the user
+   explicitly asks and it is not inside their work-hours no-push window,
+   unless they make a clear exception.
 
-Keep the invariant sharp: each slice must make the kernel more reliable, more
-testable, or harder to misuse, with a concrete local test and live REAPER smoke.
+Keep the invariant sharp: each slice must make the kernel more reliable,
+more testable, or harder to misuse, with a concrete local test (and a
+live REAPER smoke when runtime is affected).

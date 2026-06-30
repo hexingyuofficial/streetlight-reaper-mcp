@@ -18,6 +18,7 @@
     "setup": "node scripts/setup.mjs",
     "setup:beginner": "node scripts/install.mjs",
     "check:manifest": "npm run build --silent && node scripts/manifest-alignment.mjs",
+    "check:template-authoring": "npm run build --silent && node scripts/template-authoring-lint.mjs",
     "gen:error-codes": "node scripts/error-codes.mjs generate",
     "check:error-codes-fresh": "node scripts/error-codes.mjs check"
   },
