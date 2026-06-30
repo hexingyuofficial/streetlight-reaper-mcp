@@ -123,7 +123,7 @@ async function main(): Promise<void> {
 
   server.tool(
     "call_template",
-    "Run a registered Streetlight template against the REAPER project. Returns a locked envelope { template, changed_count, changed_ids, truncated } — never raw item descriptors, even for single-item changes (read post-state via get_state). Optional idempotency_key lets a caller safely retry the same logical non-render mutation within the current bridge lifetime; render_region is a carve-out and ignores the key. On BRIDGE_NOT_RUNNING without an idempotency_key, a mutating template may STILL have applied, so do NOT auto-retry — call get_state to inspect actual state. See docs/TEMPLATE_SPEC.md § Idempotency and docs/RESPONSE_BUDGET.md § call_template.",
+    "Run a registered Streetlight template against the REAPER project. Returns a locked envelope { template, changed_count, changed_ids, truncated } — never raw item descriptors, even for single-item changes (read post-state via get_state). Optional idempotency_key lets a caller safely retry the same logical mutation or render within the current bridge lifetime. On BRIDGE_NOT_RUNNING without an idempotency_key, a mutating template may STILL have applied, so do NOT auto-retry — call get_state to inspect actual state. See docs/TEMPLATE_SPEC.md § Idempotency and docs/RESPONSE_BUDGET.md § call_template.",
     {
       name: z.string().min(1),
       params: z.record(z.unknown()).optional(),

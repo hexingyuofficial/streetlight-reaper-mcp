@@ -300,6 +300,15 @@ testing. `render_region` is intentionally carved out from DEDUP in this
 slice; a retry with the same key executes the render again. DEDUP is
 chunk-local and clears on bridge reload, matching `LAST_RESULT`.
 
+2026-06-30 Slice 15 execution note: H4 Phase 2 extends DEDUP to
+deferred template terminals. `render_region` no longer has a
+`dedup_eligible` exclusion. `process_one` stores the command's
+`idempotency_key` in the `DEFERRED` slot, and `tick_deferred`
+`close_with(inner)` writes the inner envelope to DEDUP before the done
+file when the terminal is not `INTERNAL_ERROR`. Replay still
+short-circuits before `dispatch(cmd)`, so it never re-enters the
+deferred slot and never updates `LAST_RESULT`.
+
 ---
 
 ## H5 — 描述符富化（单一真相源 + 对齐校验）

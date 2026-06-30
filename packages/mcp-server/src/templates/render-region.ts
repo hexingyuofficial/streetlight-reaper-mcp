@@ -11,6 +11,9 @@ import { callTemplateResultSchema } from "./_shared.js";
  * ticks rather than busy-waiting. The asynchrony is BRIDGE-INTERNAL — the
  * agent only ever sees the normal `Result<CallTemplateResult>` envelope,
  * never a `state: "rendering"` sentinel. See docs/RENDER_NOTES.md.
+ * Slice 15 makes the deferred terminal envelope eligible for bridge-level
+ * idempotency replay; this is transport-level retry safety and does not
+ * change the template's `idempotent: false` metadata below.
  *
  * Locked v0.1 output policy (intentionally hardcoded, not exposed as
  * params): format = WAV / 24-bit PCM, channels = 2 (stereo), sample rate =

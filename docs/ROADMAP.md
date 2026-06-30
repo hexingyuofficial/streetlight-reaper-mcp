@@ -53,11 +53,11 @@ Possible additions:
 - optional socket transport (the file queue stays as zero-dependency fallback)
 - batched `call_template_sequence` tool so an N-step recipe is one MCP round trip, not N
 - response-budget API: `cursor` pagination, `fields` projection, additional `include` opt-ins, `summary_only` on `list_templates` / `list_recipes`, configurable per-tool byte caps. v0.1/Slice 01 ships the backstop (limit + item-boundary truncation + `RESPONSE_TOO_LARGE` for list scopes, plus bounded project summary); kernel Slice 02 ships the first include projection, `get_state(tracks, include:["fx"])`, for track-level FX metadata only. v0.2 grows this into fields/cursor, `get_state(render)`, take/item FX, FX parameter metadata, automation metadata, and eventually FX write capability; see `docs/RESPONSE_BUDGET.md` for the shape that v0.2 grows.
-- **idempotency tokens follow-through.** Kernel Slice 14 ships H4 Phase 1:
+- **idempotency tokens follow-through.** Kernel Slices 14-15 ship H4:
   caller-provided `idempotency_key`, in-memory bridge DEDUP, typed-error replay,
-  and `render_region` / read-path carve-outs. v0.2 can add file-backed
-  persistence, deferred-template replay for `render_region`, MCP-server
-  auto-keying, and optional key/param conflict diagnostics.
+  synchronous-template replay, and deferred `render_region` terminal replay.
+  v0.2 can add file-backed persistence, MCP-server auto-keying, and optional
+  key/param conflict diagnostics.
 - **bridge-level cap on `error.details` payload size.** v0.1 risk register flags that a template stuffing 50 KB into `error.details` lands unbounded in the response. v0.2 enforces a hardcoded cap (same family as `MAX_RESPONSE_BYTES`).
 - **foreground-render support via chunked-tick render loop.** v0.1 requires `REAPER → Preferences → Audio → Rendering → "Render in background" = ON` (Step 7 decision B2; see `docs/INSTALL.md` § Render in background). When OFF, REAPER's main thread blocks for the entire render and the bridge tick stalls, so any 60 s wire timeout fires before the typed `RENDER_TIMEOUT` ever can. v0.2 can revisit by yielding back to `reaper.defer` between progress polls so foreground renders survive without the wire-timeout cliff.
 - **configurable risk policy via env-var override.** v0.1 hardcodes `defaultPolicy()` in `callTemplate` (Step 8 Round A decision #10 — zero `destructive` / `unsafe_eval` templates ship in v0.1, so the toggle was overhead). v0.2 adds an env-var override (e.g. `STREETLIGHT_RISK_ALLOW=destructive`) alongside the first `destructive` template.

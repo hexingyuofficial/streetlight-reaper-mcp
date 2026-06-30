@@ -18,8 +18,8 @@ import {
  * smoke. Here we cover the things the fake bridge CAN reach:
  *
  *   * Locked call_template envelope round-trip with an artifact-path
- *     `changed_ids` (the deliberate carve-out — every other template uses
- *     project-entity refs).
+ *     `changed_ids` (the deliberate artifact carve-out — every other
+ *     template uses project-entity refs).
  *   * On-wire shape: kind=template, name=render_region, params verbatim.
  *   * TS-side structural rejection (PARAMS_INVALID) for missing /
  *     empty / extra fields. Domain rules (path existence, writability,
@@ -81,7 +81,7 @@ describe("callTemplate(render_region)", () => {
   });
 
   it("happy path: artifact-path changed_ids round-trips the locked envelope", async () => {
-    // render_region is the documented carve-out: changed_ids holds an
+    // render_region is the documented artifact carve-out: changed_ids holds an
     // absolute file path rather than a project-entity ref. The envelope
     // schema is `z.array(z.string()).max(50)` so this passes through; a
     // future refactor that tightens it to a `guid:` regex would break
@@ -104,6 +104,43 @@ describe("callTemplate(render_region)", () => {
         expect(result.result.changed_count).toBe(1);
         expect(result.result.changed_ids).toEqual([expectedPath]);
         expect(result.result.truncated).toBe(false);
+      }
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("idempotency_key replay preserves artifact-path changed_ids", async () => {
+    const expectedPath = "/tmp/streetlight-smoke/var_01.wav";
+    let handlerCalls = 0;
+    const bridge = startFakeBridge(
+      queueDir,
+      () => {
+        handlerCalls += 1;
+        return fakeTemplateOk("render_region", [expectedPath]);
+      },
+      { dedupTemplates: true },
+    );
+
+    try {
+      const input = {
+        name: "render_region",
+        params: {
+          region_id: "region:var_01",
+          output_dir: "/tmp/streetlight-smoke",
+        },
+        idempotency_key: "slice15-render-replay",
+      };
+      const first = await callTemplate(client, registry, input);
+      const second = await callTemplate(client, registry, input);
+
+      expect(first).toEqual(second);
+      expect(handlerCalls).toBe(1);
+      if (second.ok) {
+        expect(second.result.changed_ids).toEqual([expectedPath]);
+        expect(second.result.changed_ids[0]).not.toMatch(/^guid:|^region:|^track:/);
+      } else {
+        throw new Error("expected render_region replay success");
       }
     } finally {
       await bridge.stop();

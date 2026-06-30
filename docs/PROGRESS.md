@@ -11,33 +11,54 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 14 ✅ live-smoked / static-green /
+**Kernel hardening Slice 15 ✅ live-smoked / static-green /
 uncommitted (2026-06-30).** Architect packet lives at
-`docs/plans/SLICE_14_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/SLICE_15_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
-`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 14 implements H4
-Phase 1 idempotency tokens. `call_template` now accepts optional
-caller-provided `idempotency_key` values (1-128 ASCII-printable chars,
-no control bytes). The MCP server threads the key through
-`QueueCommand.idempotency_key`, and the bridge keeps an in-memory FIFO
-`DEDUP` table capped at 256 entries. A replay returns the stored inner
-`result` / `error` verbatim with a fresh outer `id` and `completed_at`;
-handlers are not invoked, undo is not opened, H2 verification is not
-re-run, and `LAST_RESULT` is not updated. Successes and typed errors
-are stored. `INTERNAL_ERROR` terminals are not stored. `render_region`
-and read paths are explicit carve-outs. The table clears on bridge
-reload / REAPER restart. Decisions locked by user: D1-D10 all
-recommended values (`a`). Reviewer Averroes caught one P1 before live
-smoke: the public MCP server entrypoint `packages/mcp-server/src/index.ts`
-still exposed only `{name,params}` and did not forward
-`idempotency_key`, so direct helper tests passed but real agents could
-not use the key. Fixed by adding the public tool schema field,
-forwarding it into `callTemplate(...)`, updating the tool description,
-and adding `scripts/__tests__/mcp-index.test.mjs`. Static gates are
-green: focused suite **83/83**, full `npm test` **309/309**,
-`npm run build` clean,
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 15 implements H4
+Phase 2: `render_region` is no longer an idempotency carve-out. A
+same-key retry of a completed deferred render now replays the stored
+terminal inner envelope instead of kicking a second render. The
+deferred slot carries `idempotency_key`; terminal `close_with(inner)`
+stores successes and typed errors into the shared FIFO DEDUP table
+unless the inner error is `INTERNAL_ERROR`. Replay happens before
+dispatch, so it does not call the handler, re-enter `DEFERRED`,
+re-open render settings, delete sidecars, or update
+`LAST_RESULT.renders`. Stale-WAV semantics are explicit: replay returns
+the stored path even if the file has since been deleted; a fresh render
+attempt needs a fresh key. `render_region.idempotent=false` stays
+unchanged because this is transport-level retry safety, not a semantic
+template guarantee. Decisions locked by user: S15-D1 through S15-D9
+all recommended values (`a`). Static gates are green: focused suite
+**74/74**, full `npm test` **313/313**, `npm run build` clean,
 `npm run check:manifest` green, `npm run check:error-codes-fresh`
-green, and `git diff --check` clean. REAPER live smoke
+green, and `git diff --check` clean. Reviewer Meitner found no
+P1/P2/P3 issues. REAPER live smoke `slice15-1782819968415` passed on
+`7.71/macOS-arm64` after the user's full REAPER restart and current
+`start_bridge.lua` load; extra LAST_RESULT proof run:
+`slice15-lastresult-1782820030902`. The smoke proved synchronous Slice
+14 dedup still works, keyed `render_region` replay returns the stored
+WAV path without re-rendering, typed render errors replay, same-key
+`OUTPUT_FILE_EXISTS` remains locked after conflict removal while a
+fresh key can render, and replay does not update `LAST_RESULT.renders`.
+Queue cleanup ended `pending=0`, `running=0`, `done=0`; only
+`bridge_owner` remained. Bridge-reload-clears-DEDUP was not live-run to
+avoid disrupting the user's current generation-1 bridge; DEDUP remains
+bridge-lifetime scoped by construction.
+
+**Kernel hardening Slice 14 ✅ live-smoked, committed, and pushed
+(2026-06-30, `56c57cb`).** Architect packet lives at
+`docs/plans/SLICE_14_ARCHITECT_PLAN.md`. Slice 14 implemented H4
+Phase 1 idempotency tokens for synchronous mutating templates:
+optional caller-provided `call_template.idempotency_key`, bridge
+in-memory FIFO DEDUP cap 256, success + typed-error replay,
+`INTERNAL_ERROR` skip, replay without handler/undo/verify/LAST_RESULT
+side effects, and read-path carve-out. Reviewer Averroes caught one P1
+before live smoke: the public MCP server entrypoint did not expose or
+forward `idempotency_key`; that is fixed and guarded by
+`scripts/__tests__/mcp-index.test.mjs`. Static gates were green:
+focused suite 83/83, full `npm test` 309/309, build / manifest /
+error-code / diff-check clean. REAPER live smoke
 `slice14-1782815129961` passed on `7.71/macOS-arm64` after the user's
 full REAPER restart and current `start_bridge.lua` load; cleanup left
 `pending=0`, `running=0`, `done=0` with only `bridge_owner` remaining.
@@ -779,6 +800,116 @@ Live smoke (REAPER 7.71/macOS-arm64):
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
 
+### Kernel hardening Slice 15 (2026-06-30) — H4 idempotency tokens Phase 2 ✅ live-smoked/static-green
+
+Scope from `docs/plans/SLICE_15_ARCHITECT_PLAN.md`: lift
+`render_region` out of the Slice 14 carve-out so same-key retries of a
+completed deferred render replay the stored terminal inner envelope.
+
+Locked decisions:
+
+- S15-D1=a: lift the `render_region` exclusion from `dedup_eligible`.
+- S15-D2=a: replay does not update `LAST_RESULT.renders`.
+- S15-D3=a: store successes and typed errors; do not store
+  `INTERNAL_ERROR`.
+- S15-D4=a: replay must never re-enter `DEFERRED`.
+- S15-D5=a: stale-WAV semantics are accepted and documented.
+- S15-D6=a: keep one shared `DEDUP` table and cap 256.
+- S15-D7=a: stale `RUNNING/` sweep behavior unchanged.
+- S15-D8=a: no special mid-flight same-key handling; single-slot
+  serialization is enough.
+- S15-D9=a: keep `render_region.idempotent=false`; DEDUP is
+  transport-level retry safety.
+
+Code shape:
+
+- `reaper/streetlight_bridge.lua` no longer excludes `render_region`
+  from `dedup_eligible(cmd)`.
+- The deferred slot now stores `idempotency_key`. Terminal
+  `close_with(inner)` calls `dedup_put(key, inner)` before writing the
+  done envelope when the key is non-empty and the inner error is not
+  `INTERNAL_ERROR`.
+- Replay remains the existing pre-dispatch DEDUP path, so a replay does
+  not dispatch the handler, enter `DEFERRED`, open undo, re-run H2
+  verification, delete sidecars, or update `LAST_RESULT`.
+- `packages/mcp-server/src/tools/call-template.ts`,
+  `packages/mcp-server/src/index.ts`, fake-bridge tests, render-region
+  tests, and Lua-structure tests were updated to remove the stale
+  render carve-out wording and assert deferred replay behavior.
+- Docs now spell out stale-WAV semantics: if the original WAV is
+  deleted, same-key replay still returns the stored path. Use a fresh
+  key for a fresh render.
+
+Static verification:
+
+- Focused suite: 74/74 green:
+  `call-template.test.ts`, `render-region.test.ts`,
+  `lua-structure.test.mjs`, and `mcp-index.test.mjs`.
+- Full `npm test`: 313/313 green.
+- `npm run build`: clean.
+- `npm run check:manifest`: green, 11 templates aligned.
+- `npm run check:error-codes-fresh`: green, 22 codes fresh.
+- `git diff --check`: clean.
+
+Reviewer:
+
+- Meitner found no P1/P2/P3 issues. It specifically confirmed that
+  `render_region` is no longer excluded from DEDUP, deferred terminals
+  are stored after close, replay is pre-dispatch, `INTERNAL_ERROR` is
+  skipped, read paths remain outside DEDUP, and
+  `render_region.idempotent` remains false.
+
+Live REAPER smoke:
+
+- Passed on REAPER `7.71/macOS-arm64` after the user's full REAPER
+  restart and current `start_bridge.lua` load. Main run id:
+  `slice15-1782819968415`; extra LAST_RESULT proof:
+  `slice15-lastresult-1782820030902`.
+- S1 ping/list_templates passed. `ping` returned connected; MCP
+  `list_templates` returned 11 templates, including `render_region`
+  with `entity_kind:"render"` and `idempotent:false`.
+- S2 synchronous dedup regression passed. Key
+  `slice15-1782819968415-pitch-once` replayed stored `item_pitch` for
+  item `guid:{9472804D-FE83-204D-A301-C3FC8ED608AF}`; a fresh probe
+  proved `-6` was not pre-applied. Typed `ITEM_NOT_FOUND` replay also
+  passed, and `item_rate last_result:item:0` still succeeded.
+- S3 keyed `render_region` success replay passed. First render produced
+  only
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/slice15-1782819968415/renders/slice15-1782819968415-region-a.wav`.
+  Same-key replay returned the same path with unchanged size/mtime
+  (`101536`, `1782819975510.6753`), proving no second render.
+- S4 typed render error replay passed. Key
+  `slice15-1782819968415-missing-dir` returned `OUTPUT_DIR_MISSING`
+  twice, including when retry params changed to a valid directory.
+- S5 `OUTPUT_FILE_EXISTS` terminal lock passed. Same key replayed the
+  stored `OUTPUT_FILE_EXISTS` after conflict removal; a fresh key
+  rendered successfully to
+  `slice15-1782819968415-region-conflict.wav` size `72736`.
+- S6 replay did not update `LAST_RESULT.renders`. Extra proof anchored
+  `LAST_RESULT.tracks`, replayed keyed render with unchanged WAV mtime,
+  then `track_rename last_result:track:0` succeeded. If replay had
+  finalized render, cross-bucket clear would have emptied tracks.
+- S7 bridge reload clears DEDUP was not run, deliberately, to avoid
+  disrupting the user's active generation-1 bridge. This is accepted for
+  this smoke because DEDUP remains chunk-local / bridge-lifetime scoped
+  by construction and Slice 14 already covered reload-lifetime behavior.
+- S8 representative regressions passed: `track_create`,
+  `media_import last_result:track:0`, `get_state tracks include:["fx"]`,
+  and render sidecar cleanup. No `.wav.RPP` / `.wav.RPP-bak` sidecars
+  remained.
+- Cleanup passed: temp roots removed; queue ended `pending=0`,
+  `running=0`, `done=0`; only `bridge_owner` remained. Leftover REAPER
+  project objects for manual undo/delete: track
+  `slice15-1782819968415-track`
+  `guid:{657F0C4F-95BE-C04B-8E4A-129AEBCBCFCD}`, item
+  `guid:{9472804D-FE83-204D-A301-C3FC8ED608AF}`, regions
+  `slice15-1782819968415-region-a`,
+  `slice15-1782819968415-region-conflict`,
+  `slice15-1782819968415-region-b`, extra proof track
+  `slice15-lastresult-1782820030902-anchor-renamed`
+  `guid:{4C02643F-0CC1-144F-A33D-160E5A585AFE}`, and extra proof region
+  `slice15-lastresult-1782820030902-region-a`.
+
 ### Kernel hardening Slice 14 (2026-06-30) — H4 idempotency tokens Phase 1 ✅ live-smoked/static-green
 
 Scope from `docs/plans/SLICE_14_ARCHITECT_PLAN.md`: add
@@ -939,8 +1070,8 @@ Not changed:
 - Item-derived bounds are not strongly verified. `{name,item_id}` skips
   `pos` / `rgnend` because `params.start` / `params.end` are absent and
   both fields are optional.
-- `render_region` remains the permanent artifact-path carve-out with no
-  `expectedDelta`.
+- `render_region` remains the permanent `expectedDelta` artifact-path
+  carve-out with no structural or field verifier.
 
 Verification so far:
 
@@ -1875,8 +2006,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-13 ✅ pushed; Slice 14 live-smoked/static-green | Reviewer pass / versioning decision if needed |
-| Tests | Slice 14: focused 83/83, full 309/309, build / manifest / error-code / diff-check clean; live smoke `slice14-1782815129961`; Slice 13 pushed at `f998507` with smoke `slice13-1782809548082` | Reviewer / commit only on explicit ask |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 ✅ live-smoked/static-green | Commit/versioning decision on explicit ask |
+| Tests | Slice 15: focused 74/74, full 313/313, build / manifest / error-code / diff-check clean; live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Commit only on explicit ask; avoid work-hours push unless the user explicitly makes an exception |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -1923,17 +2054,20 @@ and pushed at `c923df9`; Slice 09 was committed and pushed at
 `bf15daa`; Slice 10 was committed and pushed at `2babc5c`; Slice 11
 was committed and pushed at `f66b2db`; Slice 12 was committed and
 pushed at `6e4a02f`; Slice 13 was committed and pushed at `f998507`.
-Slice 14 is code-done, static-green, and live-smoked with run id
-`slice14-1782815129961`, waiting for reviewer pass / versioning
-decision if needed.
+Slice 14 was committed and pushed at `56c57cb` after live smoke
+`slice14-1782815129961`. Slice 15 is code-done, static-green, and
+live-smoked with run id `slice15-1782819968415`, waiting only for the
+user's commit/versioning decision.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Reviewer / versioning decision for Slice 14.** Static gates and
-   live smoke are green. Commit/push only if the user explicitly asks.
+1. **Commit/versioning decision for Slice 15.** Static gates, reviewer
+   pass, and live REAPER smoke are green. Commit only if the user
+   explicitly asks; avoid push during work hours unless the user
+   explicitly makes an exception.
 2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.

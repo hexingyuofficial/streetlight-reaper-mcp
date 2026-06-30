@@ -27,7 +27,7 @@ export interface ParsedCommand {
 
 export interface FakeBridgeOptions {
   malformed?: boolean;
-  /** Test-only model of Slice 14 bridge-level template deduplication. */
+  /** Test-only model of Slice 15 bridge-level template deduplication. */
   dedupTemplates?: boolean;
 }
 
@@ -87,7 +87,6 @@ export function startFakeBridge(
           const canDedup =
             opts.dedupTemplates === true &&
             cmd.kind === "template" &&
-            cmd.name !== "render_region" &&
             typeof key === "string" &&
             key.length > 0;
           const cached = canDedup ? dedup.get(key) : undefined;

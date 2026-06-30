@@ -112,7 +112,7 @@ blindly retry.
 
 ## Idempotency
 
-Slice 14 adds an optional caller-provided `idempotency_key` to
+Slices 14 and 15 add an optional caller-provided `idempotency_key` to
 `call_template`.
 
 ```json
@@ -133,7 +133,7 @@ Key rules:
   `0x7e`); control bytes, tabs, and newlines are rejected with
   `PARAMS_INVALID` before any queue write.
 - The caller owns key choice. Use one stable key per logical mutation
-  retry window.
+  or render retry window.
 - `id` and `idempotency_key` are different. The queue `id` is unique
   per attempt and decides where the done file lands. The idempotency key
   is stable across retries of one logical operation.
@@ -158,13 +158,25 @@ Stored terminals:
 - `INTERNAL_ERROR` is not stored; a retry with the same key executes
   again after the caller reconciles state.
 
-Carve-outs:
+Read carve-out:
 
-- `render_region` is a deferred/file-artifact template and is not
-  deduped in Slice 14. A key is accepted by the wire path, but the
-  bridge executes `render_region` every time.
 - Read paths (`ping`, `get_state`, `list_templates`, `list_recipes`)
   do not touch the dedup table.
+
+`render_region`:
+
+- Slice 15 makes `render_region` eligible for the same terminal-envelope
+  replay as synchronous templates. The first keyed render writes the WAV
+  and stores the terminal inner envelope; a later call with the same key
+  replays that envelope without starting a second render.
+- Replay returns the stored artifact path exactly as the first render
+  reported it. The bridge does not re-check whether the WAV still exists
+  on disk. If a user or agent deletes/moves the WAV between first render
+  and replay, the replay can point at a stale path.
+- Typed render errors are stored and replayed. For example, if the first
+  call returns `OUTPUT_FILE_EXISTS`, the same key keeps replaying that
+  typed error even after the file is manually removed. Use a new key for
+  a fresh attempt after fixing the underlying condition.
 
 v0.1 limitations:
 
@@ -173,8 +185,8 @@ v0.1 limitations:
 - Same key plus different params silently replays the first result. The
   caller is responsible for using a key only for the same logical
   operation.
-- v0.2 may add persistence, deferred-template replay, auto-keying, and
-  optional key/param conflict diagnostics.
+- v0.2 may add persistence, auto-keying, and optional key/param
+  conflict diagnostics.
 
 ## Safety Requirements
 

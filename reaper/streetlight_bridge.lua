@@ -134,10 +134,12 @@ local ENTITY_BUCKET = buckets.build_entity_bucket_map(MANIFEST, {
 })
 local LAST_RESULT = buckets.make_last_result(ENTITY_BUCKET)
 
--- Slice 14 / H4 Phase 1: retry deduplication for mutating template commands.
+-- Slice 14/15 / H4: retry deduplication for mutating template commands.
 -- The table is intentionally in-memory and bridge-lifetime scoped, like
--- LAST_RESULT. `render_region` is carved out because it resolves via the
--- deferred slot; v0.2 may add terminal-envelope replay for deferred templates.
+-- LAST_RESULT. Slice 15 stores deferred template terminals as well, so
+-- `render_region` can replay the first envelope without starting a second
+-- render. Replay is envelope-only: if the first render's WAV is later deleted,
+-- same-key replay still returns the stored artifact path.
 local DEDUP_CAP = 256
 local DEDUP = {}
 local DEDUP_ORDER = {}
@@ -161,7 +163,6 @@ end
 local function dedup_eligible(cmd)
   return type(cmd) == "table"
     and cmd.kind == "template"
-    and cmd.name ~= "render_region"
     and type(cmd.idempotency_key) == "string"
     and cmd.idempotency_key ~= ""
 end
@@ -836,6 +837,7 @@ end
 --   id            — command id (so the eventual done file lands at the right path)
 --   template_name — manifest name, for finalize_template
 --   entity_kind   — manifest entity_kind, for finalize_template
+--   idempotency_key — optional retry key to store the terminal inner envelope
 --   running_path  — path to the running/<id>.json that's still on disk
 --   done_path     — path the final envelope writes to
 --   recheck       — fn() -> nil (still pending), or { changed_ids = {...} } success
@@ -881,6 +883,11 @@ local function tick_deferred()
   local function close_with(inner)
     DEFERRED = nil
     pcall(d.on_terminal)
+    if type(d.idempotency_key) == "string"
+      and d.idempotency_key ~= ""
+      and not dedup_inner_is_internal_error(inner) then
+      dedup_put(d.idempotency_key, inner)
+    end
     write_done_envelope(d.running_path, d.done_path,
       shape_outer_envelope(d.id, inner))
   end
@@ -1167,6 +1174,7 @@ local function process_one()
           id            = cmd_id,
           template_name = result.template_name,
           entity_kind   = result.entity_kind,
+          idempotency_key = cmd.idempotency_key,
           running_path  = running_path,
           done_path     = DONE .. "/" .. cmd_id .. ".json",
           recheck       = result.recheck,

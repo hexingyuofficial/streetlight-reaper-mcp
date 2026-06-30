@@ -1009,7 +1009,7 @@ describe("callTemplate", () => {
       }
     });
 
-    it("render_region accepts a key but remains a dedup carve-out", async () => {
+    it("render_region same-key success replays the artifact-path inner envelope", async () => {
       let handlerCalls = 0;
       const bridge = startFakeBridge(
         queueDir,
@@ -1034,9 +1034,117 @@ describe("callTemplate", () => {
 
         expect(first.ok).toBe(true);
         expect(second.ok).toBe(true);
+        expect(first).toEqual(second);
+        if (first.ok) {
+          expect(first.result.changed_ids).toEqual(["/tmp/render-1.wav"]);
+        }
+        expect(handlerCalls).toBe(1);
+        expect(bridge.seen).toHaveLength(2);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("render_region same-key typed errors replay", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return {
+            ok: false,
+            error: {
+              code: "OUTPUT_DIR_NOT_WRITABLE",
+              message: "Could not write probe file",
+              recoverable: true,
+            },
+          };
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const input = {
+          name: "render_region",
+          params: { region_id: "region:var_01", output_dir: "/tmp" },
+          idempotency_key: "slice15-render-typed-error",
+        };
+        const first = await callTemplate(client, registry, input);
+        const second = await callTemplate(client, registry, input);
+
+        expect(first).toEqual(second);
+        expect(first.ok).toBe(false);
+        expect(handlerCalls).toBe(1);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("render_region INTERNAL_ERROR terminals are not stored", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          if (handlerCalls === 1) {
+            return {
+              ok: false,
+              error: {
+                code: "INTERNAL_ERROR",
+                message: "render crashed",
+                recoverable: false,
+              },
+            };
+          }
+          return fakeTemplateOk("render_region", ["/tmp/recovered.wav"]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const input = {
+          name: "render_region",
+          params: { region_id: "region:var_01", output_dir: "/tmp" },
+          idempotency_key: "slice15-render-internal",
+        };
+        const first = await callTemplate(client, registry, input);
+        const second = await callTemplate(client, registry, input);
+
+        expect(first.ok).toBe(false);
+        expect(second.ok).toBe(true);
+        expect(handlerCalls).toBe(2);
+      } finally {
+        await bridge.stop();
+      }
+    });
+
+    it("render_region different keys execute independently", async () => {
+      let handlerCalls = 0;
+      const bridge = startFakeBridge(
+        queueDir,
+        () => {
+          handlerCalls += 1;
+          return fakeTemplateOk("render_region", [`/tmp/render-${handlerCalls}.wav`]);
+        },
+        { dedupTemplates: true },
+      );
+
+      try {
+        const first = await callTemplate(client, registry, {
+          name: "render_region",
+          params: { region_id: "region:var_01", output_dir: "/tmp/a" },
+          idempotency_key: "slice15-render-a",
+        });
+        const second = await callTemplate(client, registry, {
+          name: "render_region",
+          params: { region_id: "region:var_01", output_dir: "/tmp/a" },
+          idempotency_key: "slice15-render-b",
+        });
+
+        expect(first.ok).toBe(true);
+        expect(second.ok).toBe(true);
         expect(first).not.toEqual(second);
         expect(handlerCalls).toBe(2);
-        expect(bridge.seen).toHaveLength(2);
       } finally {
         await bridge.stop();
       }

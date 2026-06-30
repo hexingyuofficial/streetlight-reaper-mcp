@@ -266,6 +266,15 @@ carve-outs. The table is not persisted across bridge reload; deferred
 template replay, persistence, auto-keying, and key/param conflict
 diagnostics remain v0.2+.
 
+2026-06-30 note: Slice 15 implements H4 Phase 2 by lifting the
+`render_region` exclusion. The deferred slot now carries
+`idempotency_key`; when it closes, the bridge stores the terminal inner
+envelope with the same success / typed-error / INTERNAL_ERROR rules as
+Slice 14. Same-key render retries replay the stored envelope instead
+of starting a second render. DEDUP is still in-memory only, read paths
+still do not touch it, replay still does not update `LAST_RESULT`, and
+v0.2 keeps persistence, auto-keying, and key/param conflict detection.
+
 ---
 
 ### H5 — 能力描述符富化（单一真相源 + 生成入口）

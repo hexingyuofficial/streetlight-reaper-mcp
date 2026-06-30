@@ -1,99 +1,106 @@
 # Next Window Briefing — 2026-06-30
 
 Use this as the first read after a context reset. It is the current truth during
-Slice 14.
+Slice 15.
 
 ## Snapshot
 
 - Repo: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
-- Branch: `main`; latest pushed commit is Slice 13:
-  `f998507 kernel-hardening: slice 13 region-create bounds checks`
-- Current local work: Slice 14 code-done/static-green/live-smoked, not
+- Branch: `main`; latest pushed commit is Slice 14:
+  `56c57cb kernel-hardening: slice 14 idempotency tokens`
+- Current local work: Slice 15 code-done/static-green/live-smoked, not
   committed.
 - Public name: OpenReaper. Internal code paths and bridge names still use
   Streetlight.
 - Do not commit, push, reset, branch, or rewrite history unless the user
-  explicitly asks.
+  explicitly asks. New user preference: local commits are okay as explicit save
+  points, but avoid pushing during work hours unless the user explicitly makes an
+  exception.
 - Do not stage or touch the nested ignored `style-memory-mcp/` project.
 
 ## Latest Verified Commit
 
-Slice 13 is complete, live-smoked, committed, and pushed.
+Slice 14 is complete, live-smoked, committed, and pushed.
 
-- `region_create` verifies explicit bounds `[name,pos,rgnend]`.
-- The mid-smoke double-owner bug was fixed with file-backed
-  `bridge_owner`.
-- REAPER smoke run `slice13-1782809548082` passed on
-  `7.71/macOS-arm64`.
-- Commit-time gates: `npm test` 293/293, build clean, manifest clean,
-  error-code audit clean, diff-check clean.
+- `call_template` accepts optional caller-provided `idempotency_key`.
+- Bridge DEDUP is in-memory FIFO, cap 256.
+- Synchronous mutating templates replay successes and typed errors.
+- `INTERNAL_ERROR` terminals are not stored.
+- Replay does not call handlers, open undo, re-run H2 verify, or update
+  `LAST_RESULT`.
+- REAPER smoke run `slice14-1782815129961` passed on `7.71/macOS-arm64`.
+- Commit-time gates: focused 83/83, full `npm test` 309/309, build clean,
+  manifest clean, error-code audit clean, diff-check clean.
 
 ## Current Slice
 
-Slice 14 implements H4 Phase 1 idempotency tokens and has passed live
-REAPER smoke.
+Slice 15 implements H4 Phase 2: `render_region` deferred dedup.
 
 What changed:
 
-- `call_template` accepts optional `idempotency_key`.
-- Keys are 1-128 ASCII-printable chars; control bytes are rejected with
-  `PARAMS_INVALID` before queue write.
-- `QueueCommand.idempotency_key` is distinct from command `id`.
-- The bridge owns an in-memory FIFO `DEDUP` table capped at 256 entries.
-- Eligible synchronous templates replay stored inner envelopes on a key hit.
-- Successes and typed errors are stored.
-- `INTERNAL_ERROR` terminals are not stored.
-- `render_region` and read paths are carved out.
-- Replay does not call handlers, open undo, re-run H2 verify, or update
-  `LAST_RESULT`.
-- DEDUP clears on bridge reload / REAPER restart.
-- Reviewer caught and fixed one P1: the public MCP server `call_template`
-  entrypoint in `packages/mcp-server/src/index.ts` now exposes and forwards
-  `idempotency_key`; `scripts/__tests__/mcp-index.test.mjs` guards it.
+- `render_region` is no longer excluded from `dedup_eligible(cmd)`.
+- The deferred slot carries `idempotency_key`.
+- When deferred `close_with(inner)` reaches a terminal result, it stores the
+  inner envelope in DEDUP before writing the done envelope, unless the inner
+  error is `INTERNAL_ERROR`.
+- Later same-key `render_region` calls replay before dispatch. They do not call
+  the handler, enter `DEFERRED`, open render settings, delete sidecars, or update
+  `LAST_RESULT.renders`.
+- Successes and typed render errors are replayable.
+- `INTERNAL_ERROR` is not stored, so the next same-key attempt re-executes.
+- Stale-WAV semantics are explicit: if the original WAV is deleted, replay still
+  returns the stored path. A fresh render attempt requires a fresh key.
+- `render_region.idempotent=false` stays unchanged; DEDUP is transport-level
+  retry safety, not semantic idempotency.
 
 Static status:
 
-- Focused suite: 83/83 green.
-- Full `npm test`: 309/309 green.
+- Focused suite: 74/74 green.
+- Full `npm test`: 313/313 green.
 - `npm run build`: clean.
 - `npm run check:manifest`: green, 11 templates aligned.
 - `npm run check:error-codes-fresh`: green, 22 codes fresh.
 - `git diff --check`: clean.
 
-Live smoke:
+Reviewer + live smoke:
 
-- Run id: `slice14-1782815129961`.
-- Queue: `/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
-- REAPER: `7.71/macOS-arm64`.
-- Passed: S0 ping; S1 template metadata; no-key
-  `track_create` -> `media_import last_result:track:0`; same-key
-  `item_pitch` replay with pitch not double-applied; typed
-  `ITEM_NOT_FOUND` replay; `LAST_RESULT` preservation; `render_region`
-  same-key carve-out; read-path key carve-out; different-key/no-key
-  behavior; Slice 06-13 representative regressions.
-- Cleanup: temp render dir removed; queue ended `pending=0`,
-  `running=0`, `done=0`; `bridge_owner` may remain.
+- Reviewer Meitner found no P1/P2/P3 issues.
+- REAPER live smoke passed on `7.71/macOS-arm64`.
+- Main run id: `slice15-1782819968415`.
+- Extra LAST_RESULT proof: `slice15-lastresult-1782820030902`.
+- Core proof: keyed `render_region` first rendered
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/slice15-1782819968415/renders/slice15-1782819968415-region-a.wav`;
+  same-key replay returned the same path with unchanged size/mtime
+  (`101536`, `1782819975510.6753`).
+- Typed render error replay passed for `OUTPUT_DIR_MISSING`.
+- `OUTPUT_FILE_EXISTS` terminal lock replayed after conflict removal; a fresh key
+  rendered successfully.
+- Replay did not update `LAST_RESULT.renders`; an anchored
+  `LAST_RESULT.tracks` survived render replay and
+  `track_rename last_result:track:0` succeeded afterward.
+- Representative regressions passed: synchronous Slice 14 dedup, typed
+  `ITEM_NOT_FOUND` replay, `track_create`, `media_import
+  last_result:track:0`, `get_state tracks include:["fx"]`, and render sidecar
+  cleanup.
+- Queue cleanup ended `pending=0`, `running=0`, `done=0`; only `bridge_owner`
+  remained.
+- Bridge-reload-clears-DEDUP was not live-run to avoid disrupting the user's
+  active generation-1 bridge. DEDUP is still chunk-local / bridge-lifetime
+  scoped by construction.
 
 ## Workflow To Continue
 
 1. Read:
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/HANDOFF.md`
    - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/PROGRESS.md`
-   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/SLICE_14_ARCHITECT_PLAN.md`
-2. Ask reviewer subagent for Slice 14 review if still needed.
-3. Commit and push only after the user explicitly says so.
-
-## Live REAPER Evidence
-
-- User preflight showed `bridge starting (generation 1)`, `loaded
-  error_codes (22 codes)`, and `bridge ready (generation 1)`.
-- Smoke covered the required Slice 14 focus: no-key baseline, same-key
-  `item_pitch`, typed error replay, `LAST_RESULT` preservation,
-  `render_region` and read-path carve-outs, different-key/no-key
-  behavior, and Slice 06-13 representative regressions.
-- Do not repeat live smoke unless a new code change or user request makes
-  it useful.
+   - `/Users/Zhuanz/Documents/streetlight-reaper-mcp/docs/plans/SLICE_15_ARCHITECT_PLAN.md`
+2. Slice 15 is ready for commit when the user explicitly asks.
+3. If the user asks for the next hardening step, wait for or request the next
+   Architect packet before coding.
+4. Commit only after the user explicitly asks. Push only if the user explicitly
+   asks and it is not inside their work-hours no-push window, unless they make a
+   clear exception.
 
 Keep the invariant sharp: each slice must make the kernel more reliable, more
 testable, or harder to misuse, with a concrete local test and live REAPER smoke.

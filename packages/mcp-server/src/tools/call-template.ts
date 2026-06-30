@@ -45,8 +45,6 @@ export type CallTemplateInput = z.infer<typeof CallTemplateInput>;
  */
 export const DEFAULT_CALL_TEMPLATE_TIMEOUT_MS = 5000;
 
-let warnedRenderRegionDedupCarveOut = false;
-
 /**
  * MCP-facing wrapper for `call_template`.
  *
@@ -120,17 +118,6 @@ export async function callTemplate(
 
   const effectiveTimeout =
     timeoutMs ?? def.timeoutMs ?? DEFAULT_CALL_TEMPLATE_TIMEOUT_MS;
-
-  if (
-    shape.data.idempotency_key !== undefined &&
-    def.name === "render_region" &&
-    !warnedRenderRegionDedupCarveOut
-  ) {
-    warnedRenderRegionDedupCarveOut = true;
-    process.stderr.write(
-      `[streetlight-mcp] render_region is a dedup carve-out; idempotency_key ignored by bridge\n`,
-    );
-  }
 
   return client.send<CallTemplateResult>(
     "template",

@@ -241,14 +241,15 @@ recommended):**
 If both the 8-item demo AND the preflight side-quest pass, the v0.1
 release-candidate reproduces cleanly on this Mac. You're done.
 
-**Optional Slice 14 dedup check:**
+**Optional Slice 15 dedup check:**
 
 - Run `item_pitch` twice with the same `idempotency_key` against the
   same selected item. Expected: the second call returns the same inner
   result and the take pitch is not applied twice.
-- Run `render_region` twice with the same `idempotency_key` after
-  deleting the first WAV. Expected: it executes again and produces a
-  fresh WAV, because `render_region` is the v0.1 dedup carve-out.
+- Run `render_region` twice with the same `idempotency_key` without
+  deleting the first WAV. Expected: the second call replays the first
+  success envelope quickly, returns the same WAV path, and does not
+  start a second render.
 
 ## 8. Teardown
 

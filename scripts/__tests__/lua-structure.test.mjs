@@ -204,7 +204,7 @@ describe("Lua bridge structure", () => {
     expect(ownerIndex).toBeLessThan(processIndex);
   });
 
-  it("wires Slice 14 idempotency through process_one without touching read or deferred paths", async () => {
+  it("wires Slice 15 idempotency through sync and deferred template paths without touching reads", async () => {
     const bridge = await readRepoFile("reaper/streetlight_bridge.lua");
 
     expect(bridge).toMatch(/local DEDUP_CAP = 256/);
@@ -213,7 +213,7 @@ describe("Lua bridge structure", () => {
     expect(bridge).toMatch(/function dedup_get\(key\)/);
     expect(bridge).toMatch(/function dedup_put\(key, inner\)/);
     expect(bridge).toMatch(/function dedup_eligible\(cmd\)/);
-    expect(bridge).toMatch(/cmd\.name ~= "render_region"/);
+    expect(bridge).not.toMatch(/cmd\.name ~= "render_region"/);
     expect(bridge).toMatch(/dedup_inner_is_internal_error/);
     expect(bridge).toMatch(/dedup replay key=/);
 
@@ -243,7 +243,9 @@ describe("Lua bridge structure", () => {
       bridge.indexOf("local function tick_deferred()"),
       bridge.indexOf("function DISPATCH.template"),
     );
-    expect(deferredBody).not.toMatch(/DEDUP|dedup_/);
+    expect(deferredBody).toMatch(/idempotency_key/);
+    expect(deferredBody).toMatch(/dedup_inner_is_internal_error\(inner\)/);
+    expect(deferredBody).toMatch(/dedup_put\(d\.idempotency_key, inner\)/);
   });
 
   it("wires Slice 06 field verification after count checks and before LAST_RESULT finalize", async () => {

@@ -22,6 +22,8 @@ describe("MCP server public tool wiring", () => {
     expect(callTemplateBlock).toMatch(/\.regex\(\/\^\[\\x20-\\x7e\]\+\$\/,\s*"ASCII printable only, no control bytes"\)/);
     expect(callTemplateBlock).toMatch(/async \(\{ name, params, idempotency_key \}\)/);
     expect(callTemplateBlock).toMatch(/callTemplate\(client, registry, \{\s*name,\s*params,\s*idempotency_key,\s*\}\)/s);
+    expect(callTemplateBlock).toMatch(/logical mutation or render/);
+    expect(callTemplateBlock).not.toMatch(/render_region is a carve-out and ignores the key/);
     expect(callTemplateBlock).toMatch(/docs\/TEMPLATE_SPEC\.md § Idempotency/);
     expect(callTemplateBlock).toMatch(/BRIDGE_NOT_RUNNING without an idempotency_key/);
   });
