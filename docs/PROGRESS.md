@@ -11,6 +11,37 @@ first.
 
 ## Current Status
 
+**Kernel hardening Slice 18 ✅ code-done / static-green / uncommitted
+working tree (2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_18_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 18 lands **H6 Phase
+2**: a conservative dry-run template scaffolder. New
+`scripts/scaffold-template.mjs` plus `npm run scaffold:template`
+validate an explicit descriptor and print deterministic TS/Lua/test/
+manifest/registry TODO skeletons; they do not write files. Locked
+surface: `--dry-run` required, `--pack core` only,
+`--entity-kind item|track|region`, `--risk read|write_safe|filesystem`,
+explicit `--undoable`, explicit `--idempotent`, and `--undo-flags`
+required exactly when `--undoable true`. Unsupported this slice:
+render templates, destructive/unsafe_eval risk, non-core packs,
+machine JSON output, and any write/overwrite mode.
+`docs/TEMPLATE_AUTHORING.md` now documents the dry-run helper. H6
+master plan / execution notes record Slice 18 and point Slice 19 at
+using the scaffolder for a real low-risk template, likely
+`track_color`. Zero runtime change: no Lua bridge behavior, no manifest
+runtime change, no registry registration, no MCP tool contract change,
+no wire fields, no error codes, no new template. Static gates are
+green: full `npm test` **348/348** (Slice 17 baseline 329/329 + 19
+scaffolder tests), `npm run build` clean, `npm run check:manifest` 11
+templates aligned,
+`npm run check:error-codes-fresh` 22 codes fresh,
+`npm run check:template-authoring` 11 templates ok, and
+`git diff --check` clean. Per S18-D8=a no REAPER live smoke is
+required because nothing bridge-visible changed. Local commit policy
+unchanged: do not push during the work-hours window unless the user
+explicitly makes an exception.
+
 **Kernel hardening Slice 17 ✅ code-done / static-green / local
 save-point commit `kernel-hardening: slice 17 define template helper`
 (2026-06-30).** Architect packet lives at
@@ -23,25 +54,12 @@ identity function — it returns the exact input definition object and
 does not clone, normalize, add defaults, generate result schemas, or
 change runtime behavior. Only `item_pitch` and `track_rename` migrate
 as low-risk pilots; both keep explicit `callTemplateResultSchema(name)`
-constants. `docs/TEMPLATE_AUTHORING.md` now recommends
-`defineTemplate(...)` in the TS authoring step and states that result
-schemas remain explicit. New tests in
-`packages/mcp-server/src/templates/__tests__/define-template.test.ts`
-cover identity plus `CapabilityRegistry.list()` and `list_templates`
-metadata/schema regressions for both pilots: name, risk, mutates,
-undoable, entity_kind, undo_flags, idempotent, expectedDelta,
-examples, params JSON Schema key fields, and locked result-envelope
-JSON Schema. Zero runtime change: no Lua, bridge, manifest, verify,
-wire, error-code, MCP-tool, template-count, or `CapabilityDefinition`
-contract change. Static gates are green: full `npm test` **329/329**
-(Slice 16 baseline 326/326 + 3 helper/metadata regression tests),
+constants. Static gates are green: full `npm test` **329/329**,
 `npm run build` clean, `npm run check:manifest` 11 templates aligned,
 `npm run check:error-codes-fresh` 22 codes fresh,
 `npm run check:template-authoring` 11 templates ok, and
 `git diff --check` clean. Per S17-D7=a no REAPER live smoke is
-required because nothing bridge-visible changed. Local commit policy
-unchanged: do not push during the work-hours window unless the user
-explicitly makes an exception.
+required because nothing bridge-visible changed.
 
 **Kernel hardening Slice 16 ✅ code-done / static-green / locally
 committed at `0996b5b` with docs-only reviewer follow-up committed at
@@ -2081,8 +2099,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 + Slice 16 + Slice 16 follow-up + Slice 17 ✅ locally committed / ready as local save points | Push only on explicit user exception during work hours |
-| Tests | Slice 17: full 329/329, build / manifest / error-code / template-authoring / diff-check clean; Slice 15 live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Avoid work-hours push unless the user explicitly makes an exception |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-14 ✅ pushed; Slice 15 + Slice 16 + Slice 16 follow-up + Slice 17 ✅ locally committed; Slice 18 ✅ code-done/static-green in working tree | Push only on explicit user exception during work hours |
+| Tests | Slice 18: full 348/348, build / manifest / error-code / template-authoring / diff-check clean; Slice 15 live smoke `slice15-1782819968415`; Slice 14 pushed at `56c57cb` | Avoid work-hours push unless the user explicitly makes an exception |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -2134,17 +2152,24 @@ Slice 14 was committed and pushed at `56c57cb` after live smoke
 and live-smoked with run id `slice15-1782819968415`. Slice 16 is
 locally committed at `0996b5b`; reviewer Locke's docs-only follow-up is
 locally committed at `45e0193`; Slice 17 is static-green and saved as
-local commit `kernel-hardening: slice 17 define template helper`.
+local commit `kernel-hardening: slice 17 define template helper`;
+Slice 17 reviewer follow-up is saved at `8f0b505`; Slice 18 is the
+current uncommitted working tree and is static-green.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Choose the next kernel slice.** H6 Phase 2 (`scripts/scaffold-template.mjs`)
-   is the natural follow-up to Slice 17's `defineTemplate` helper, but it
-   should get its own architect packet before coding.
-2. **Second-Mac smoke / v0.1 release tag remains available.**
+1. **Review / close Slice 18.** H6 Phase 2
+   (`scripts/scaffold-template.mjs`) is code-done and static-green in
+   the working tree. It is intentionally CLI/docs-only and has no REAPER
+   smoke requirement. Commit only when the user explicitly asks; do not
+   push during work hours unless the user makes a clear exception.
+2. **Plan Slice 19.** Natural next slice: use the dry-run scaffolder to
+   land a real low-risk template (likely `track_color`) end to end, then
+   live-smoke because runtime Lua/manifest/registry will change.
+3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
 

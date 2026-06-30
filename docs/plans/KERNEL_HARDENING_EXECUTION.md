@@ -416,6 +416,18 @@ regression coverage: `defineTemplate(def) === def`, plus
 `CapabilityRegistry.list()` and `list_templates` metadata/schema checks
 for both pilots. No Lua/runtime change; no REAPER restart or live smoke.
 
+2026-06-30 Slice 18 execution note: Phase 2 = dry-run template
+scaffolder only. Add `scripts/scaffold-template.mjs`, wire it as
+`npm run scaffold:template`, and keep the first slice plan-only:
+`--dry-run` is required, no files are written, `--pack` must be `core`,
+`--entity-kind` is limited to `item`/`track`/`region`, and `--risk` is
+limited to `read`/`write_safe`/`filesystem`. The CLI prints deterministic
+TS/Lua/test/manifest/registry TODO skeletons and explicitly warns that
+they are not lint-clean until filled. Required validation is static only:
+full tests, build, manifest check, error-code freshness, template
+authoring lint, and diff-check. Slice 19 should use this scaffolder for a
+real low-risk template.
+
 ---
 
 ## H7 — 传输升级（可选 socket，契约不变）

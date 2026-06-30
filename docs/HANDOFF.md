@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 17; defineTemplate helper)
+# Handoff — 2026-06-30 (Kernel Slice 18; dry-run template scaffolder)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -17,15 +17,23 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   (live-smoked), Slice 16 at `0996b5b kernel-hardening: slice 16
   template authoring guide + lint` (static-green), Slice 16 reviewer
   follow-up at `45e0193 docs: follow up slice 16 authoring review`,
-  and Slice 17 as local save point `kernel-hardening: slice 17 define
-  template helper` (static-green, not pushed). Slice 17 lands H6 Phase
-  1: `defineTemplate({ ... })` in
-  `packages/mcp-server/src/templates/_shared.ts`, still pure identity,
-  with only `item_pitch` and `track_rename` migrated as pilots. The
-  user manages versioning out-of-band — do NOT commit, branch, push, or
-  reset without an explicit ask. User preference (2026-06-29): local
-  commits are okay as explicit save points, but avoid pushing during
-  work hours unless the user explicitly makes an exception.
+  Slice 17 as local save point `kernel-hardening: slice 17 define
+  template helper` (static-green, not pushed), and Slice 17 reviewer
+  follow-up at `8f0b505 docs: follow up slice 17 review`. Slice 18 is
+  the current working-tree slice: H6 Phase 2 dry-run template
+  scaffolder, static-green, not committed yet. The user manages
+  versioning out-of-band — do NOT commit, branch, push, or reset
+  without an explicit ask. User preference (2026-06-29): local commits
+  are okay as explicit save points, but avoid pushing during work hours
+  unless the user explicitly makes an exception.
+- Slice 18 static baseline: full `npm test` → **348/348 green**
+  (Slice 17 baseline 329/329 plus 19 new scaffolder tests in
+  `scripts/__tests__/scaffold-template.test.mjs`), `npm run build` →
+  clean, `npm run check:manifest` → 11 templates aligned,
+  `npm run check:error-codes-fresh` → 22 codes fresh,
+  `npm run check:template-authoring` → 11 templates ok, and
+  `git diff --check` → clean. No REAPER smoke run (intentional;
+  S18-D8=a, CLI/docs-only).
 - Slice 17 static baseline: full `npm test` → **329/329 green**
   (Slice 16 baseline 326/326 plus 3 new helper/metadata regression
   tests in
@@ -66,6 +74,39 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
+- **Kernel hardening Slice 18 ✅ code-done / static-green / uncommitted
+  working tree (2026-06-30).** Scope from
+  `docs/plans/SLICE_18_ARCHITECT_PLAN.md`. This is **H6 Phase 2**: a
+  dry-run-only template scaffolder CLI.
+  - New file `scripts/scaffold-template.mjs` exports pure helpers plus
+    a CLI entry wired as `npm run scaffold:template`. The CLI requires
+    `--dry-run`, reads existing template slugs to prevent collisions,
+    and prints a deterministic plan instead of writing files.
+  - Supported descriptor surface is deliberately narrow: `--pack core`
+    only, `--entity-kind item|track|region`, `--risk read|write_safe|filesystem`,
+    explicit `--undoable`, explicit `--idempotent`, and `--undo-flags`
+    required exactly when `--undoable true`.
+  - Output includes normalized metadata, would-create/manual-modify
+    lists, a TS skeleton using `defineTemplate(...)`, Lua handler TODO,
+    `manifest.lua` TODO, registry TODO, and test TODO. It warns that no
+    files were written and that TODO skeletons are not lint-clean until
+    filled.
+  - New file `scripts/__tests__/scaffold-template.test.mjs` adds 19
+    tests covering name/slug/identifier helpers, CLI parsing, dry-run
+    requirement, unsupported render/destructive/non-core cases,
+    undoable/undo_flags constraints, slug collisions, deterministic
+    target paths, TS skeleton shape, manifest Lua bitmask snippets, and
+    formatted output.
+  - `docs/TEMPLATE_AUTHORING.md` documents the dry-run workflow; H6
+    master plan / execution notes record Slice 18 and point Slice 19 at
+    a real first template (likely `track_color`).
+  - Zero runtime change: no Lua bridge behavior, no manifest runtime
+    change, no registry registration, no MCP tool contract change, no
+    wire fields, no error codes, no new template.
+  - Static gates green: `npm test` 348/348, `npm run build`,
+    `npm run check:manifest`, `npm run check:error-codes-fresh`,
+    `npm run check:template-authoring`, and `git diff --check`.
+  - Per S18-D8=a no REAPER smoke. The CLI is bridge-invisible.
 - **Kernel hardening Slice 17 ✅ code-done / static-green / local
   save-point commit `kernel-hardening: slice 17 define template helper`
   (2026-06-30).** Scope from
@@ -88,8 +129,9 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
     result-envelope JSON Schema.
   - `docs/TEMPLATE_AUTHORING.md` now recommends `defineTemplate({ ... })`
     in the TS authoring step and explicitly says result schemas remain
-    explicit. H6 master plan / execution notes record Slice 17 and leave
-    the scaffolder CLI for Slice 18+.
+    explicit. H6 master plan / execution notes record Slice 17; Slice 18
+    has since landed the dry-run scaffolder CLI in the current working
+    tree.
   - Zero runtime change: no Lua, no `streetlight_bridge.lua`, no
     `verify.lua`, no `manifest.lua`, no `expectedDelta` shape, no error
     codes, no wire fields, no MCP tools, no new templates, no change to
@@ -1250,14 +1292,14 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Close Slice 17 review follow-up."** Slice 17 is already a
-       local save-point commit at HEAD. Reviewer Pasteur found no code
-       issue; its only P3 was this stale first-moves/baseline wording.
-       Static gates are green. Make a local docs follow-up commit only
+   (a) **"Review / close Slice 18."** Slice 18 is the current
+       uncommitted working tree. It is static-green and has no REAPER
+       smoke requirement because it only adds a dry-run CLI + docs.
+       Run reviewer/static-smoke if not already done, then commit only
        if the user explicitly asks. Avoid push during work hours unless
        the user explicitly makes an exception.
 
-   (b) **"Codex/reviewer found a bug in Slice 17 or earlier."** Locked
+   (b) **"Codex/reviewer found a bug in Slice 18 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -1266,13 +1308,16 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** Slice 17 baseline is full
-   `npm test` 329/329, `npm run build` clean,
+2. **Tests + build baseline this window:** Slice 18 baseline is full
+   `npm test` 348/348, `npm run build` clean,
    `npm run check:manifest` green,
    `npm run check:error-codes-fresh` green,
    `npm run check:template-authoring` green, and `git diff --check`
-   clean. Slice 17 has no REAPER smoke by decision S17-D7=a because no
-   runtime changed. Slice 16 baseline was full `npm test` 326/326,
+   clean. Slice 18 has no REAPER smoke by decision S18-D8=a because no
+   runtime changed. Slice 17 baseline was full `npm test` 329/329,
+   build / manifest / error-code / template-authoring / diff-check
+   clean, with no REAPER smoke by S17-D7=a. Slice 16 baseline was full
+   `npm test` 326/326,
    build / manifest / error-code / template-authoring / diff-check
    clean, with no REAPER smoke by S16-D5=a. Slice 15 baseline was
    focused suite 74/74, full

@@ -93,6 +93,38 @@ You do **not** touch:
   `CapabilityDefinition` shape itself — that is a kernel-hardening slice,
   not a template-author slice).
 
+## Optional Dry-Run Scaffolder
+
+Slice 18 adds a conservative, plan-only helper:
+
+```bash
+npm run scaffold:template -- \
+  --name track_color \
+  --entity-kind track \
+  --risk write_safe \
+  --undoable true \
+  --undo-flags TRACKCFG \
+  --idempotent true \
+  --dry-run
+```
+
+The CLI **does not write files**. It validates the descriptor, checks for
+existing template slug collisions, and prints deterministic skeletons /
+TODO snippets for:
+
+- the TS definition using `defineTemplate(...)`;
+- the Lua handler TODO in the existing per-entity module;
+- the `manifest.lua` entry;
+- the `templates/index.ts` registry import/register lines;
+- the MCP-server test TODO.
+
+It is deliberately narrow in this slice: `--pack` must be `core`;
+`--entity-kind` is limited to `item`, `track`, or `region`; `--risk` is
+limited to `read`, `write_safe`, or `filesystem`; `render`,
+`destructive`, `unsafe_eval`, and any file-writing mode are deferred.
+The output includes TODOs and is intentionally **not lint-clean** until a
+human/agent fills the real schema, ReaScript calls, examples, and tests.
+
 ## Step-By-Step
 
 ### 1. Write the TS template definition
@@ -564,9 +596,9 @@ is:
   `packages/mcp-server/src/templates/_shared.ts`. Use it for new TS
   definitions; it is an identity helper and does not generate result
   schemas or change runtime behavior.
-- Slice 18 (candidate): scaffolder CLI (`scripts/scaffold-template.mjs`)
-  that emits all of `.ts` + `.lua` + test + manifest fragment from a
-  single descriptor.
+- Slice 18: dry-run scaffolder CLI (`scripts/scaffold-template.mjs`)
+  that validates the minimal descriptor and prints TS/Lua/test/manifest
+  TODO skeletons without writing files.
 - Slice 19 (candidate): use the scaffolder to land a real first
   example (e.g. `track_color`) end to end.
 

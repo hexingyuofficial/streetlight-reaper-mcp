@@ -334,15 +334,16 @@ entity_kind）、`errors.ts`（码）。新增模板要在多处接线。
   新测试 + manifest 校验（H5）。
 - 生成的 handler 默认带 undo block 与 verify 钩子（I7/I10）。
 
-2026-06-30 note: Slice 16 lands H6 Phase 0 — the authoring guide
+2026-06-30 historical note from Slice 16: Slice 16 lands H6 Phase 0 — the authoring guide
 (`docs/TEMPLATE_AUTHORING.md`) and a new static lint
 (`scripts/template-authoring-lint.mjs`, `npm run check:template-authoring`)
 that enforces examples-against-Zod and TS file slug ↔ `definition.name`
 parity. Examples are positive-only by convention; negative fixtures live
-exclusively in the lint's own tests. The TS-side `defineTemplate({ ... })`
-helper (Slice 17 candidate) and the full-stack scaffolder CLI (Slice 18
-candidate) come later. Slice 16 is TS/docs-only; no Lua runtime, wire,
-schema, or error-code change, and no REAPER live smoke needed.
+exclusively in the lint's own tests. At the time, the TS-side
+`defineTemplate({ ... })` helper (later Slice 17) and the scaffolder CLI
+(later Slice 18) were still future slices. Slice 16 is TS/docs-only; no
+Lua runtime, wire, schema, or error-code change, and no REAPER live
+smoke needed.
 
 2026-06-30 note: Slice 17 lands H6 Phase 1 — a template-local
 `defineTemplate({ ... })` identity helper in
@@ -351,8 +352,18 @@ boilerplate without changing `CapabilityDefinition`, runtime behavior,
 wire shape, Lua, manifest metadata, or `list_templates` output. The
 slice migrates only `item_pitch` and `track_rename` as low-risk pilots
 and adds regression coverage proving their `CapabilityRegistry` /
-`list_templates` metadata and JSON Schemas stay stable. The full-stack
-scaffolder CLI remains Slice 18+.
+`list_templates` metadata and JSON Schemas stay stable. Slice 18 follows
+with the dry-run scaffolder CLI.
+
+2026-06-30 note: Slice 18 lands H6 Phase 2 — a dry-run-only
+`scripts/scaffold-template.mjs` CLI plus `npm run scaffold:template`.
+It validates an explicit descriptor (`name`, `entity_kind`, `risk`,
+`undoable`, `undo_flags`, `idempotent`) and prints deterministic
+TS/Lua/test/manifest/registry TODO skeletons. It does not write files,
+does not support non-core packs, render entity_kind, destructive risk, or
+machine JSON output, and does not add a real template. Slice 19 is the
+first candidate to use the scaffolder for a real low-risk template such
+as `track_color`.
 
 > **这一项回答了你的问题「内核稳了能不能走捷径追上广度」**：能。H6 之后，REAPER
 > 有限的 ReaScript API 表面可被**批量描述符 → 批量生成 → 批量验证**，每个模板都带
