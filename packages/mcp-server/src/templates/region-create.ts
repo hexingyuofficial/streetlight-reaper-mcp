@@ -116,7 +116,16 @@ export const regionCreateDefinition: CapabilityDefinition<
   // Not idempotent: a second call with the same name returns REGION_NAME_TAKEN
   // (and creates no marker), but the first call DID create one.
   idempotent: false,
-  expectedDelta: { count: 1, creates: true },
+  // Slice 12: region scope verify. The name field is structurally guaranteed
+  // because the handler creates the region with params.name, so this is a
+  // pipeline proof-of-life like Slice 10's track_create reuse path. Bounds
+  // (pos/rgnend) verification is deferred to Slice 13 because explicit vs
+  // item-derived mode needs its own paramPath decision. See TEMPLATE_SPEC.md.
+  expectedDelta: {
+    count: 1,
+    creates: true,
+    fields: [{ scope: "region", field: "name", paramPath: "name" }],
+  },
   params: RegionCreateParams,
   result: RegionCreateResult,
   examples: [

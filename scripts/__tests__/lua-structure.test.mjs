@@ -214,20 +214,26 @@ describe("Lua bridge structure", () => {
     expect(bridge).toMatch(/fields = json\.array\(field_details or {}\)/);
   });
 
-  it("does not add region field verification scope in Slice 09, Slice 10, or Slice 11", async () => {
+  it("adds Slice 12 region field verification scope without touching refs.lua", async () => {
     const verify = await readRepoFile("reaper/packs/core/verify.lua");
 
-    expect(verify).not.toMatch(/parse_region_ref/);
-    expect(verify).not.toMatch(/region\s*=\s*{[^}]*entity_kind/s);
-    expect(verify).not.toMatch(/FIELD_READERS\s*=\s*{[^}]*region/s);
+    expect(verify).toMatch(/local function parse_region_ref\(ref\)/);
+    expect(verify).toMatch(/\^region:\(\.\+\)\$/);
+    expect(verify).toMatch(/local function find_region_by_name\(name\)/);
+    expect(verify).toMatch(/EnumProjectMarkers3/);
+    expect(verify).toMatch(/local function read_region_field\(handle, field\)/);
+    expect(verify).toMatch(/region\s*=\s*{ entity_kind = "region"/);
+    expect(verify).toMatch(/parse = parse_region_ref/);
+    expect(verify).not.toMatch(/dofile\([^)]*refs\.lua/);
   });
 
-  it("keeps Slice 11 count:any fields on the first changed id only", async () => {
+  it("keeps Slice 11 and Slice 12 field verification on the first changed id only", async () => {
     const verify = await readRepoFile("reaper/packs/core/verify.lua");
 
-    expect(verify).toMatch(/parse_guid_ref\(changed_ids\[1\]\)/);
+    expect(verify).toMatch(/reader\.parse\(changed_ids\[1\]\)/);
     expect(verify).not.toMatch(/for\s+[^,\n]+,\s*[^,\n]+\s+in\s+ipairs\(changed_ids\)/);
     expect(verify).not.toMatch(/for\s+[^,\n]+\s+in\s+ipairs\(changed_ids\)/);
+    expect(verify).not.toMatch(/for\s+[^=\n]+=\s*1,\s*#changed_ids/);
     expect(verify).not.toMatch(/per_item/i);
   });
 

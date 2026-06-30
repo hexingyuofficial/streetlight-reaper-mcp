@@ -290,6 +290,7 @@ back the changed entity after the structural check passes but before
 | `item_trim` | `take` | `D_STARTOFFS` | `params.start_offset` when supplied |
 | `item_duplicate` | `item` | `D_POSITION` | `params.position` on the newly-created item |
 | `media_import` | `item` | `D_POSITION` | `params.position` on `changed_ids[1]` (first-item verify) |
+| `region_create` | `region` | `name` | `params.name` on the newly-created region |
 | `track_create` | `track` | `P_NAME` | `params.name` on either created or reused track |
 | `track_rename` | `track` | `P_NAME` | `params.name` |
 
@@ -330,16 +331,13 @@ reader can compare `D_POSITION` against `params.position`.
 The D5 relaxation is intentionally incremental. Slice 09 covers only
 numeric-count `creates:true` descriptors. Slice 10 covers numeric-count
 `maybeCreates:true` descriptors. Slice 11 covers `creates:true` with
-`count:"any"` as first-item verification. `fields[]` still cannot
-coexist with `deletes:true`. Region field verification is also still
-closed: `fields[].scope` remains `take | item | track`, so
-`region_create` cannot opt into fields until a future slice adds region
-ref parsing and a region field reader.
+`count:"any"` as first-item verification. Slice 12 adds the `region`
+field scope for `region_create`. `fields[]` still cannot coexist with
+`deletes:true`.
 
-Field verification is intentionally not global yet. `region_create` and
-`render_region` remain future work. `render_region` still omits
-`expectedDelta` in v0.1 because it is deferred and returns an artifact
-path, not a project-entity ref.
+Field verification is intentionally not global yet. `render_region`
+still omits `expectedDelta` in v0.1 because it is deferred and returns
+an artifact path, not a project-entity ref.
 
 Slice 10 starts field verification on maybeCreates-style templates.
 `expectedDelta.fields[]` may coexist with `maybeCreates:true` only when
@@ -369,8 +367,25 @@ envelope but are not field-checked. If that field check fails, the
 imported item may already exist in the project and `LAST_RESULT` is not
 updated, matching the existing `VERIFY_FAILED` recovery contract.
 
-Region scope remains closed until a future slice adds region ref
-parsing and a region field reader.
+Slice 12 starts field verification on region scope. Region changed ids
+use the v0.1 name-shaped form `region:NAME`; REAPER 7 exposes no native
+region GUID API, so GUID-shaped region refs remain unsupported. The
+bridge's `verify.lua` uses an internal `parse_region_ref` plus
+`find_region_by_name` reader that mirrors the refs.lua region-name scan
+without coupling verify.lua to refs.lua.
+
+`region_create` uses region `name ← params.name`, no tolerance,
+`optional`, or `nullable`. This check is a pipeline proof-of-life:
+the handler creates the region with `params.name`, then verify reads the
+region by the `region:NAME` changed id and compares the name string
+strictly. It proves the region changed-id shape, parser, scanner, and
+field reader are live; it does not yet verify bounds. `pos` and
+`rgnend` readers exist in Lua for the next slice, but
+`region_create` does not declare bounds fields in Slice 12 because
+explicit `{start,end}` mode and item-derived `{item_id}` mode need a
+separate paramPath decision. If region field verification fails, the
+region may already exist in the project and `LAST_RESULT` is not
+updated, matching the existing `VERIFY_FAILED` recovery contract.
 
 ## Reference Resolution (refs.lua)
 
@@ -382,7 +397,12 @@ The agent-facing reference kinds and what they mean in v0.1:
 | `guid:{...}` | An item by REAPER-assigned GUID. Stable across the project. | 3 |
 | `last_result:item:N` | The N-th item from the most recent successful mutating `call_template`. Resets on bridge reload; not affected by reads (`ping`, `get_state`). | 4 |
 | `track:Name/item:N` | The N-th media item on the first track whose `P_NAME` matches exactly. Duplicate track names → first match wins. | 4 |
+| `track:Name` | The first track whose `P_NAME` matches exactly. Duplicate track names → first match wins. | 4 |
+| `last_result:track:N` | The N-th track from the most recent successful mutating `call_template` that produced tracks. Reads and failed verifies do not update it. | 4 |
+| `region:Name` | The first project region whose name matches exactly. Region identity is name-shaped in v0.1 because REAPER 7 exposes no native region GUID API. | 5 |
+| `last_result:region:N` | The N-th region from the most recent successful mutating `call_template` that produced regions. Reads and failed verifies do not update it. | 5 |
 
-Future v0.1 ref kinds (`last_result:region:N`, `last_result:track:N`)
-parse on the TS side but the Lua resolver returns `REF_INVALID` until
-the corresponding mutating templates ship (Step 5 / 6).
+`guid:{...}` remains an item / track GUID shape only. Region GUID refs
+parse on the TS side as a well-formed reference shape, but the Lua
+resolver returns `REF_INVALID` for region GUIDs in v0.1; use
+`region:Name` or `last_result:region:N` instead.

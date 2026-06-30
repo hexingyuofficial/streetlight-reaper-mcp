@@ -100,12 +100,18 @@ describe("listTemplates", () => {
       ],
     });
     const regionCreate = result.result.templates.find((t) => t.name === "region_create");
-    expect(regionCreate?.expectedDelta).toEqual({ count: 1, creates: true });
+    expect(regionCreate?.expectedDelta).toEqual({
+      count: 1,
+      creates: true,
+      fields: [
+        { scope: "region", field: "name", paramPath: "name" },
+      ],
+    });
     const renderRegion = result.result.templates.find((t) => t.name === "render_region");
     expect(renderRegion).not.toHaveProperty("expectedDelta");
   });
 
-  it("exposes field-check metadata on the nine covered templates", () => {
+  it("exposes field-check metadata on the ten covered templates", () => {
     const registry = new CapabilityRegistry();
     registerCoreTemplates(registry);
     const result = listTemplates(registry);
@@ -175,6 +181,10 @@ describe("listTemplates", () => {
         "track_create",
         [{ scope: "track", field: "P_NAME", paramPath: "name" }],
       ],
+      [
+        "region_create",
+        [{ scope: "region", field: "name", paramPath: "name" }],
+      ],
     ]);
 
     for (const template of result.result.templates) {
@@ -243,6 +253,27 @@ describe("listTemplates", () => {
       ],
     });
     const field = trackCreate?.expectedDelta?.fields?.[0];
+    expect(field).not.toHaveProperty("tolerance");
+    expect(field).not.toHaveProperty("optional");
+    expect(field).not.toHaveProperty("nullable");
+  });
+
+  it("keeps region_create field metadata free of tolerance, optional, and nullable", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const regionCreate = result.result.templates.find((t) => t.name === "region_create");
+    expect(regionCreate?.expectedDelta).toEqual({
+      count: 1,
+      creates: true,
+      fields: [
+        { scope: "region", field: "name", paramPath: "name" },
+      ],
+    });
+    const field = regionCreate?.expectedDelta?.fields?.[0];
     expect(field).not.toHaveProperty("tolerance");
     expect(field).not.toHaveProperty("optional");
     expect(field).not.toHaveProperty("nullable");

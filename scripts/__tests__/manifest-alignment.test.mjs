@@ -282,6 +282,58 @@ return { templates = {
     );
   });
 
+  it("allows region-scope expectedDelta fields", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["MISCCFG"],
+          entity_kind: "region",
+          expectedDelta: {
+            count: 1,
+            creates: true,
+            fields: [
+              { scope: "region", field: "name", paramPath: "name" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors.filter((error) => error.startsWith("EXPECTED_DELTA_INVALID:item_pitch"))).toEqual([]);
+  });
+
+  it("still allows all four field scopes after Slice 12", () => {
+    const ts = new Map([
+      [
+        "item_pitch",
+        {
+          mutates: true,
+          undoable: true,
+          undo_flags: ["ITEMS"],
+          entity_kind: "item",
+          expectedDelta: {
+            count: 1,
+            fields: [
+              { scope: "take", field: "D_PITCH", paramPath: "semitones" },
+              { scope: "item", field: "D_POSITION", paramPath: "position" },
+              { scope: "track", field: "P_NAME", paramPath: "name" },
+              { scope: "region", field: "name", paramPath: "region_name" },
+            ],
+          },
+        },
+      ],
+    ]);
+    const lua = parseManifestLua(SAMPLE_MANIFEST);
+    const errors = diffManifestAlignment(ts, lua);
+
+    expect(errors.filter((error) => error.includes("invalid scope"))).toEqual([]);
+  });
+
   it("rejects fields with creates:true and non-positive count", () => {
     const ts = new Map([
       [

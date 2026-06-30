@@ -14,7 +14,7 @@ export type UndoFlag = keyof typeof UNDO_STATE;
 
 export interface FieldCheckDescriptor {
   field: string;
-  scope: "take" | "item" | "track";
+  scope: "take" | "item" | "track" | "region";
   paramPath: string;
   tolerance?: number;
   optional?: boolean;
@@ -163,6 +163,7 @@ const FIELD_CHECK_SCOPES = new Set<FieldCheckDescriptor["scope"]>([
   "take",
   "item",
   "track",
+  "region",
 ]);
 
 function validateDefinition(def: CapabilityDefinition): void {

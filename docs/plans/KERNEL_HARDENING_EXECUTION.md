@@ -161,6 +161,15 @@ because the wire shape now sends `creates:true`, `count:"any"`, and
 files with older manifest metadata. The runtime intentionally verifies
 only `changed_ids[1]` for `count:"any"` descriptors.
 
+2026-06-30 note: Slice 12 implements `region_create` field postchecks
+and changes `verify.lua` by adding `parse_region_ref` plus a
+`FIELD_READERS["region"]` synthetic reader. It is a mandatory
+REAPER-restart slice because the wire shape now sends
+`fields[scope="region"]` for the first time. Before live smoke, fully
+quit/reopen REAPER, load the current `start_bridge.lua`, and verify the
+console shows `bridge ready (generation 1)` plus `loaded error_codes
+(22 codes)`.
+
 ### 细化点（这步设计难点都在这里）
 - **不要做任意字段的全量 before/after diff**——太贵且 before 不可知（handler 内部才解析
   出受影响实体）。校验只覆盖两类**可知后置条件**：

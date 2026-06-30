@@ -1,4 +1,4 @@
-# Handoff — 2026-06-30 (Kernel Slice 11 ✅ live-smoked; media_import first-item field verification)
+# Handoff — 2026-06-30 (Kernel Slice 12 ✅ live-smoked; not committed)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -9,31 +9,102 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   01, `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03,
   `d3f8fe7` Kernel Slice 04, `5ba6318` Kernel Slice 05, and
   `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07,
-  `c923df9` Kernel Slice 08, `bf15daa` Kernel Slice 09, and
-  `2babc5c` Kernel Slice 10. Slice 11 is code-done and live-smoked
-  locally, not committed. H2 field-level
-  verification now covers `media_import`, the first `creates:true` +
-  `count:"any"` template with `expectedDelta.fields[]`. The user
+  `c923df9` Kernel Slice 08, `bf15daa` Kernel Slice 09,
+  `2babc5c` Kernel Slice 10, and `f66b2db` Kernel Slice 11.
+  Slice 12 is code-done locally, reviewer-pass, and live-smoked on
+  REAPER. H2 field-level verification now covers `region_create`, the
+  first `region` scope template with `expectedDelta.fields[]`. The user
   manages versioning out-of-band — do NOT commit, branch, push, or
   reset without an explicit ask.
-- Slice 11 static baseline: `npm test` → **284/284 green**,
+- Slice 12 static baseline: `npm test` → **291/291 green**,
   `npm run build` → clean, `npm run check:manifest` → 11 templates
   aligned, `npm run check:error-codes-fresh` → 22 codes fresh, and
-  `git diff --check` → clean. The implemented contract is
-  `media_import.expectedDelta =
-  {count:"any", creates:true, fields:[item D_POSITION <- position]}` with
-  tolerance `1e-6`. Runtime verification intentionally checks only
-  `changed_ids[1]` for `count:"any"` descriptors. No Lua runtime code
-  changed; `verify.lua` already reads the first changed GUID-shaped item.
-  REAPER live smoke is green on `7.71/macOS-arm64` with run id
-  `slice11-202606300552524`. Reviewer pass, if desired, is still not
-  recorded in these docs.
+  `git diff --check` → clean. The
+  implemented contract is `region_create.expectedDelta =
+  {count:1, creates:true, fields:[region name <- name]}`. `verify.lua`
+  now parses `region:NAME` and reads a synthetic region handle for
+  `name` / `pos` / `rgnend`, though Slice 12 only declares `name`.
+  Focused reviewer pass found no P1/P2 issues; the only P3 doc nit
+  (`docs/TEMPLATE_SPEC.md` stale future-region-ref wording) is fixed.
+  REAPER live smoke passed on `7.71/macOS-arm64` with run id
+  `slice12-1782804345538`; queue teardown ended at
+  `pending=0`, `running=0`, `done=0`.
 - `docs/PUBLIC_STORY.md` is the living public narrative / launch-copy
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
-- **Kernel hardening Slice 11 ✅ live-smoked / uncommitted
+- **Kernel hardening Slice 12 ✅ live-smoked / not committed
   (2026-06-30).** Scope from
+  `docs/plans/SLICE_12_ARCHITECT_PLAN.md`:
+  - `region_create` keeps its locked success envelope and
+    `expectedDelta={count:1,creates:true}`, but adds one field check:
+    region `name` from `params.name`, with no tolerance, `optional`, or
+    `nullable`.
+  - This opens the `region` field scope. `verify.lua` now has an
+    internal `parse_region_ref`, `find_region_by_name`, and
+    `FIELD_READERS.region`. The reader returns a synthetic region handle
+    `{index,pos,rgnend,name}` and supports `name`, `pos`, and `rgnend`,
+    but Slice 12 declares only `name`.
+  - Region identity remains name-shaped in v0.1: `changed_ids` use
+    `region:NAME`. Region GUID refs remain unsupported.
+  - The `name` check is a pipeline proof-of-life like Slice 10's
+    `track_create` reuse path: the handler creates the region with
+    `params.name`, then verify reads the region by `region:NAME` and
+    compares the string. Bounds verification is deferred to Slice 13.
+  - Still deferred: `region_create` `pos` / `rgnend` field descriptors
+    and the `render_region` artifact-path carve-out.
+  - Decisions locked by user from the Architect packet:
+    D1=a `region_create`; D2=a name only; D3=a synthetic region struct;
+    D4=a verify-local region scanner, do not reuse refs.lua; D5=a strict
+    string equality; D6=a document the pipeline proof-of-life in
+    `docs/TEMPLATE_SPEC.md`; D7=a document orphan-region side effects.
+  - Static gates are green: focused suite 89/89, full `npm test`
+    291/291, `npm run build` clean, `npm run check:manifest` green, and
+    `npm run check:error-codes-fresh` green, and `git diff --check`
+    clean.
+  - Focused reviewer pass found no P1/P2 issues. The only P3 doc nit
+    was stale `docs/TEMPLATE_SPEC.md` wording that still called
+    `last_result:region:N` future-facing; it is fixed.
+  - Live smoke passed after the user's full REAPER restart and current
+    bridge load. Console evidence before the run showed
+    `bridge ready (generation 1)` and `loaded error_codes (22 codes)`.
+    Smoke run id: `slice12-1782804345538`; queue:
+    `/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
+  - S0/S1: `ping` returned `bridge:"connected"` and
+    `reaper_version:"7.71/macOS-arm64"`. `list_templates` had 11
+    templates; `region_create.expectedDelta` was exactly
+    `{count:1, creates:true, fields:[{scope:"region", field:"name",
+    paramPath:"name"}]}` with no `tolerance`, `optional`, or
+    `nullable`; `render_region` still omitted `expectedDelta`.
+  - S2/S3: explicit region `slice12-1782804345538-explicit` and
+    item-derived region `slice12-1782804345538-item` both returned ok
+    with `changed_ids = ["region:<name>"]` and read back through
+    `get_state regions`.
+  - S4/S5: raw forced field mismatch created orphan region
+    `slice12-1782804345538-raw-orphan` while expecting
+    `slice12-1782804345538-raw-expected-other`; bridge returned
+    `VERIFY_FAILED`, `recoverable:false`, and
+    `details.fields[0] = {scope:"region", field:"name",
+    expected:"slice12-1782804345538-raw-expected-other",
+    actual:"slice12-1782804345538-raw-orphan", ok:false}`. A following
+    `region_create item_id:"last_result:item:0"` succeeded as
+    `slice12-1782804345538-lr-item-after-fail`, proving failed verify
+    did not update `LAST_RESULT`. Read scopes also did not pollute
+    `last_result:item:0` or `last_result:track:0`.
+  - S6/S7: regression codes passed for `REGION_NAME_INVALID`,
+    `REGION_NAME_TAKEN`, cross-type `REF_INVALID`, `PARAMS_INVALID`,
+    and `SCOPE_NOT_IMPLEMENTED` on `get_state(render)`. H2
+    representatives passed for `item_trim` optional field,
+    `item_fade` nullable field, `media_import` first-item
+    `D_POSITION`, `track_create` name, and `item_duplicate`
+    `D_POSITION`.
+  - S8: `render_region` rendered region `slice12-1782804345538-render`
+    to a temp WAV path only; `/usr/bin/file` reported
+    `WAVE audio, Microsoft PCM, 24 bit, stereo 48000 Hz`. Temp render
+    dir was removed. Queue cleanup check ended at
+    `pending=0`, `running=0`, `done=0`.
+- **Kernel hardening Slice 11 ✅ live-smoked / committed and pushed
+  (2026-06-30, `f66b2db`).** Scope from
   `docs/plans/SLICE_11_ARCHITECT_PLAN.md`:
   - `media_import` keeps its locked success envelope and
     `expectedDelta={count:"any",creates:true}`, but adds one field check:
@@ -845,12 +916,11 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Review / commit Slice 11" or "Start Architect Slice 12."**
-       Slice 11 is code-done, static-green, and live-smoked locally,
-       but not committed. Run reviewer first if desired, or move on to
-       the next architect packet.
+   (a) **"Commit / publish Slice 12."** Slice 12 is code-done,
+       static-green, reviewer-pass, and live-smoked locally, but not
+       committed or pushed. Only do git versioning after an explicit ask.
 
-   (b) **"Codex/reviewer found a bug in Slice 11 or earlier."** Locked
+   (b) **"Codex/reviewer found a bug in Slice 12 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any
        decision the user owns BEFORE editing → propose 1-2 tight
        regression notes → wait for sign-off → fix → hand back for
@@ -859,13 +929,15 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
    (c) **Pivot to something else.** Abandon these first moves and
        follow the new direction.
 
-2. **Tests + build baseline this window:** Slice 11 static baseline is
-   `npm test` 284/284,
+2. **Tests + build baseline this window:** Slice 12 static baseline is
+   `npm test` 291/291,
    `npm run build` clean, `npm run check:manifest` green,
    `npm run check:error-codes-fresh` green, `git diff --check`
-   clean. Slice 11 REAPER smoke is green with run id
-   `slice11-202606300552524`. Slice 10 REAPER smoke S0-S17 is green
-   with timestamp `20260630032823069`. Slice 09 static
+   clean. Slice 12 REAPER smoke is green with run id
+   `slice12-1782804345538` on REAPER `7.71/macOS-arm64`. Slice 11
+   REAPER smoke is green with run id `slice11-202606300552524`.
+   Slice 10 REAPER smoke S0-S17 is green with timestamp
+   `20260630032823069`. Slice 09 static
    baseline was `npm test` 272/272, and its REAPER smoke
    `slice09-1782785591409` is green. The
    `npm run typecheck` script prints a

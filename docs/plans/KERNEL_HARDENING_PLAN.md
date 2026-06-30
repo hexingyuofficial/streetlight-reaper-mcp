@@ -160,6 +160,17 @@ Slice 12+.
 `params.position` at tolerance `1e-6`. `region_create` / region-scope
 field readers stay Slice 12+.
 
+2026-06-30 note: Slice 12 extends field-level verification to
+`region_create` and adds the `region` field scope. `verify.lua` now
+parses name-shaped `region:NAME` changed ids and reads a synthetic
+region handle `{index,pos,rgnend,name}`. The Slice 12 descriptor declares
+only `region.name <- params.name`; this is a pipeline proof-of-life like
+Slice 10's `track_create` reuse path. Bounds verification (`pos` /
+`rgnend`) stays Slice 13 because explicit and item-derived region modes
+need their own paramPath decision. H2 v0.1 coverage is now 10/11; the
+remaining `render_region` template is the permanent artifact-path
+carve-out.
+
 **触及文件**：
 - `packages/core/src/registry.ts`（`expectedDelta` 字段）
 - `packages/core/src/errors.ts`（`VERIFY_FAILED`）

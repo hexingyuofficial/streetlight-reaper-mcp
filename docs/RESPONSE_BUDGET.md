@@ -367,11 +367,14 @@ v0.1 field verification is bounded to at most two fields per call
 Slice 10 with one field). Slice 11 adds `media_import` with one
 first-item field check even though its structural count is `"any"`, so
 the failure payload still contains at most one media-import
-`fields[]` entry. Nullable field descriptors do not add data to
-`error.details.fields[]`; a `json.null` parameter is coerced to
-expected value `0` before the normal `{scope, field, expected, actual,
-tolerance, ok}` detail is built. The error message still tells agents
-to call `get_state` because the mutation may already be applied.
+`fields[]` entry. Slice 12 adds `region_create` with one region-name
+string field check, so region-scope failure payloads stay similarly
+small even though the field value is a string rather than a number.
+Nullable field descriptors do not add data to `error.details.fields[]`;
+a `json.null` parameter is coerced to expected value `0` before the
+normal `{scope, field, expected, actual, tolerance, ok}` detail is
+built. The error message still tells agents to call `get_state` because
+the mutation may already be applied.
 
 ### Empty Strings vs Missing Fields
 

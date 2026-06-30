@@ -204,7 +204,7 @@ function validateExpectedDeltaFields(name, expected) {
     if (typeof field.field !== "string" || field.field.length === 0) {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] missing field`);
     }
-    if (!["take", "item", "track"].includes(field.scope)) {
+    if (!["take", "item", "track", "region"].includes(field.scope)) {
       errors.push(`EXPECTED_DELTA_INVALID:${name}: fields[${i}] has invalid scope`);
     }
     if (typeof field.paramPath !== "string" || field.paramPath.length === 0) {

@@ -3,6 +3,7 @@
 -- Slice 04 verified entity-count deltas. Slice 06 adds a deliberately small
 -- field-level readback for four in-place templates. Slice 08 lets nullable
 -- field descriptors coerce explicit json.null params to expected value 0.
+-- Slice 12 adds region:NAME readback for region_create's name field.
 
 local M = {}
 
@@ -98,6 +99,11 @@ local function parse_guid_ref(ref)
   return ref:match("^guid:(%b{})$")
 end
 
+local function parse_region_ref(ref)
+  if type(ref) ~= "string" then return nil end
+  return ref:match("^region:(.+)$")
+end
+
 local function find_item_by_guid(guid)
   local count = reaper.CountMediaItems(0)
   for i = 0, count - 1 do
@@ -116,6 +122,18 @@ local function find_track_by_guid(guid)
     if this_guid == guid then return track end
   end
   return nil
+end
+
+local function find_region_by_name(name)
+  local i = 0
+  while true do
+    local retval, isrgn, pos, rgnend, region_name = reaper.EnumProjectMarkers3(0, i)
+    if retval == 0 then return nil end
+    if isrgn and region_name == name then
+      return { index = i, pos = pos, rgnend = rgnend, name = region_name }
+    end
+    i = i + 1
+  end
 end
 
 local function read_item_field(handle, field)
@@ -137,10 +155,18 @@ local function read_track_field(handle, field)
   return true, reaper.GetMediaTrackInfo_Value(handle, field)
 end
 
+local function read_region_field(handle, field)
+  if field == "name" then return true, handle.name end
+  if field == "pos" then return true, handle.pos end
+  if field == "rgnend" then return true, handle.rgnend end
+  return false, nil, "region field '" .. tostring(field) .. "' not supported"
+end
+
 local FIELD_READERS = {
-  item  = { entity_kind = "item",  resolve = find_item_by_guid,  read = read_item_field },
-  take  = { entity_kind = "item",  resolve = find_item_by_guid,  read = read_take_field },
-  track = { entity_kind = "track", resolve = find_track_by_guid, read = read_track_field },
+  item   = { entity_kind = "item",   resolve = find_item_by_guid,    read = read_item_field,   parse = parse_guid_ref,   expected_ref = "guid:{...}" },
+  take   = { entity_kind = "item",   resolve = find_item_by_guid,    read = read_take_field,   parse = parse_guid_ref,   expected_ref = "guid:{...}" },
+  track  = { entity_kind = "track",  resolve = find_track_by_guid,   read = read_track_field,  parse = parse_guid_ref,   expected_ref = "guid:{...}" },
+  region = { entity_kind = "region", resolve = find_region_by_name,  read = read_region_field, parse = parse_region_ref, expected_ref = "region:NAME" },
 }
 
 local function param_path(field)
@@ -174,17 +200,6 @@ function M.check_fields(expected, changed_ids, params, entity_kind, ctx)
   end
 
   local failures = {}
-  local guid = parse_guid_ref(changed_ids[1])
-  if not guid then
-    failures[#failures + 1] = {
-      scope = "unknown",
-      field = "changed_ids[1]",
-      expected = "guid:{...}",
-      actual = tostring(changed_ids[1]),
-      ok = false,
-    }
-    return "changed_ids[1] is not a guid ref", failures
-  end
 
   for i = 1, #expected.fields do
     local field = expected.fields[i]
@@ -199,37 +214,48 @@ function M.check_fields(expected, changed_ids, params, entity_kind, ctx)
     elseif reader.entity_kind ~= entity_kind then
       failures[#failures + 1] = mismatch(field, reader.entity_kind, entity_kind, nil)
     else
-      local handle = reader.resolve(guid)
-      if not handle then
-        failures[#failures + 1] = mismatch(field, "existing " .. entity_kind, "not found", nil)
+      local parsed_ref = reader.parse(changed_ids[1])
+      if not parsed_ref then
+        failures[#failures + 1] = {
+          scope = field.scope,
+          field = "changed_ids[1]",
+          expected = reader.expected_ref,
+          actual = tostring(changed_ids[1]),
+          ok = false,
+        }
       else
-        local key = param_path(field)
-        local raw_value = type(params) == "table" and params[key] or nil
-        local expected_value = raw_value
-        local should_read = true
-        if raw_value == nil and field.optional == true then
-          -- The descriptor says "verify this only when the caller supplied
-          -- the param". Used by item_trim.start_offset in Slice 07.
-          should_read = false
-        elseif raw_value == nil then
-          failures[#failures + 1] = mismatch(field, "present param", nil, field.tolerance)
-          should_read = false
-        elseif ctx and ctx.json and raw_value == ctx.json.null then
-          if field.nullable == true then
-            expected_value = 0
-          else
-            failures[#failures + 1] = mismatch(field, "non-null param", "json.null", field.tolerance)
+        local handle = reader.resolve(parsed_ref)
+        if not handle then
+          failures[#failures + 1] = mismatch(field, "existing " .. entity_kind, "not found", nil)
+        else
+          local key = param_path(field)
+          local raw_value = type(params) == "table" and params[key] or nil
+          local expected_value = raw_value
+          local should_read = true
+          if raw_value == nil and field.optional == true then
+            -- The descriptor says "verify this only when the caller supplied
+            -- the param". Used by item_trim.start_offset in Slice 07.
             should_read = false
+          elseif raw_value == nil then
+            failures[#failures + 1] = mismatch(field, "present param", nil, field.tolerance)
+            should_read = false
+          elseif ctx and ctx.json and raw_value == ctx.json.null then
+            if field.nullable == true then
+              expected_value = 0
+            else
+              failures[#failures + 1] = mismatch(field, "non-null param", "json.null", field.tolerance)
+              should_read = false
+            end
           end
-        end
 
-        if should_read then
-          local ok_read, actual_value, read_err = reader.read(handle, field.field)
-          local tolerance = field.tolerance
-          if not ok_read then
-            failures[#failures + 1] = mismatch(field, expected_value, read_err or "read failed", tolerance)
-          elseif not values_match(expected_value, actual_value, tolerance) then
-            failures[#failures + 1] = mismatch(field, expected_value, actual_value, tolerance)
+          if should_read then
+            local ok_read, actual_value, read_err = reader.read(handle, field.field)
+            local tolerance = field.tolerance
+            if not ok_read then
+              failures[#failures + 1] = mismatch(field, expected_value, read_err or "read failed", tolerance)
+            elseif not values_match(expected_value, actual_value, tolerance) then
+              failures[#failures + 1] = mismatch(field, expected_value, actual_value, tolerance)
+            end
           end
         end
       end

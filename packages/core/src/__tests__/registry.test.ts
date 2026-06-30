@@ -442,6 +442,71 @@ describe("CapabilityRegistry", () => {
     });
   });
 
+  it("accepts region-scope expectedDelta field checks", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "region_create_checked",
+      description: "region create checked",
+      pack: "test",
+      risk: "write_safe",
+      mutates: true,
+      undoable: true,
+      idempotent: false,
+      entity_kind: "region",
+      undo_flags: ["MISCCFG"],
+      expectedDelta: {
+        count: 1,
+        creates: true,
+        fields: [
+          { scope: "region", field: "name", paramPath: "name" },
+        ],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    expect(reg.list()[0]?.expectedDelta).toEqual({
+      count: 1,
+      creates: true,
+      fields: [
+        { scope: "region", field: "name", paramPath: "name" },
+      ],
+    });
+  });
+
+  it("accepts region-scope tolerance metadata for future numeric region fields", () => {
+    const reg = new CapabilityRegistry();
+    reg.register({
+      name: "region_bounds_checked",
+      description: "region bounds checked",
+      pack: "test",
+      risk: "write_safe",
+      mutates: true,
+      undoable: true,
+      idempotent: false,
+      entity_kind: "region",
+      undo_flags: ["MISCCFG"],
+      expectedDelta: {
+        count: 1,
+        creates: true,
+        fields: [
+          { scope: "region", field: "pos", paramPath: "start", tolerance: 1e-6 },
+        ],
+      },
+      params: z.object({}),
+      result: z.object({}),
+      examples: [{ params: {} }],
+    });
+
+    expect(reg.list()[0]?.expectedDelta?.fields?.[0]).toEqual({
+      scope: "region",
+      field: "pos",
+      paramPath: "start",
+      tolerance: 1e-6,
+    });
+  });
+
   it("accepts maybeCreates expectedDelta field checks with a positive numeric count", () => {
     const reg = new CapabilityRegistry();
     reg.register({
@@ -552,6 +617,12 @@ describe("CapabilityRegistry", () => {
     expect(() =>
       registerWithExpectedDelta({
         count: 1,
+        fields: [{ scope: "region", field: "name", paramPath: "region.name" }],
+      }),
+    ).toThrow(/top-level key/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
         fields: [{ scope: "take", field: "D_PITCH", paramPath: "semitones", tolerance: -1 }],
       }),
     ).toThrow(/tolerance/);
@@ -623,6 +694,15 @@ describe("CapabilityRegistry", () => {
         ],
       }),
     ).toThrow(/duplicate take:D_PITCH/);
+    expect(() =>
+      registerWithExpectedDelta({
+        count: 1,
+        fields: [
+          { scope: "region", field: "name", paramPath: "name" },
+          { scope: "region", field: "name", paramPath: "other" },
+        ],
+      }),
+    ).toThrow(/duplicate region:name/);
     expect(() =>
       registerWithExpectedDelta({
         count: 1,

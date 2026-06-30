@@ -11,8 +11,34 @@ first.
 
 ## Current Status
 
-**Kernel hardening Slice 11 ✅ live-smoked / uncommitted
+**Kernel hardening Slice 12 ✅ live-smoked / not committed
 (2026-06-30).** Architect packet lives at
+`docs/plans/SLICE_12_ARCHITECT_PLAN.md`; source master plans remain
+`docs/plans/KERNEL_HARDENING_PLAN.md` and
+`docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 12 continues H2
+field-level verification by adding `region_create`, the first
+`region` scope template with `expectedDelta.fields[]`.
+`region_create` declares region `name ← params.name`, with no
+tolerance, `optional`, or `nullable`. `verify.lua` now parses
+name-shaped `region:NAME` changed ids and reads a synthetic region
+handle `{index,pos,rgnend,name}`; Slice 12 declares only `name`, while
+`pos` / `rgnend` bounds verification is deferred to Slice 13. The name
+field is a pipeline proof-of-life, not a new bounds assertion. Decisions
+locked by user: D1=a only `region_create`; D2=a name only; D3=a
+synthetic region struct; D4=a verify-local region scanner, do not reuse
+refs.lua; D5=a strict string equality; D6=a document the pipeline
+proof-of-life in `docs/TEMPLATE_SPEC.md`; D7=a document orphan-region
+side effects. Static gates are green: focused suite 89/89,
+`npm test` 291/291, `npm run build` clean,
+`npm run check:manifest` green, and `npm run check:error-codes-fresh`
+green. Focused reviewer pass found no P1/P2; its only P3 doc nit
+(`docs/TEMPLATE_SPEC.md` stale future-region-ref wording) is fixed.
+REAPER live smoke passed on `7.71/macOS-arm64` after the user fully
+restarted REAPER and loaded the current bridge. Smoke run id:
+`slice12-1782804345538`.
+
+**Kernel hardening Slice 11 ✅ live-smoked, committed, and pushed
+(2026-06-30, `f66b2db`).** Architect packet lives at
 `docs/plans/SLICE_11_ARCHITECT_PLAN.md`; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 11 continues H2
@@ -33,10 +59,11 @@ D6=a failed import may leave an orphan item but must not update
 `LAST_RESULT`. Static gates are green: focused suite 82/82,
 `npm test` 284/284, `npm run build` clean,
 `npm run check:manifest` green, `npm run check:error-codes-fresh`
-green, and `git diff --check` clean. REAPER live smoke passed on
-REAPER 7.71/macOS-arm64 with run id `slice11-202606300552524` after the
-user restarted REAPER and loaded the current bridge. Reviewer pass, if
-desired, is still not recorded here.
+green, and `git diff --check` clean. Reviewer pass completed with no
+P1/P2; two P3 nits were fixed before live smoke. REAPER live smoke
+passed on REAPER 7.71/macOS-arm64 with run id
+`slice11-202606300552524` after the user restarted REAPER and loaded
+the current bridge.
 
 **Kernel hardening Slice 10 ✅ live-smoked, committed, and pushed
 (2026-06-30, `2babc5c`).** Architect packet lives at
@@ -691,6 +718,127 @@ Live smoke (REAPER 7.71/macOS-arm64):
 - Temporary smoke scripts and render files were removed. Smoke tracks /
   regions/items remain in the open REAPER project for manual Cmd+Z or
   deletion; they are not repository state.
+
+### Kernel hardening Slice 12 (2026-06-30) — region_create region-scope name field verification ✅ live-smoked
+
+Scope: extend H2 field verification to `region_create` and add the
+first `region` field scope. This is intentionally name-only: it proves
+the `region:NAME` changed-id shape, parser, scanner, and reader are
+live, while keeping `pos` / `rgnend` bounds verification for a later
+two-mode paramPath decision.
+
+What changed:
+
+- `docs/plans/SLICE_12_ARCHITECT_PLAN.md` — Architect packet copied
+  into the repo for future windows.
+- `packages/core/src/registry.ts` — `FieldCheckDescriptor.scope` and
+  `FIELD_CHECK_SCOPES` now include `"region"`. Existing D5 boundaries
+  remain: `deletes:true` with fields is still rejected; `maybeCreates`
+  still requires a finite positive numeric count; `creates:true` still
+  accepts finite positive numeric count or `"any"`.
+- `packages/mcp-server/src/templates/region-create.ts` —
+  `region_create.expectedDelta` expands from `{count:1, creates:true}`
+  to `{count:1, creates:true, fields:[...]}` with one descriptor:
+  region `name` from `params.name`.
+- `reaper/packs/core/verify.lua` — adds `parse_region_ref`,
+  `find_region_by_name`, `read_region_field`, and `FIELD_READERS.region`.
+  The region reader resolves name-shaped `region:NAME` refs to a
+  synthetic `{index,pos,rgnend,name}` handle and supports `name`, `pos`,
+  and `rgnend`; Slice 12 only declares `name`.
+- `scripts/manifest-alignment.mjs` — mirrors the registry field-scope
+  expansion so CLI alignment and runtime registration cannot drift.
+- Tests updated:
+  - registry tests accept region-scope descriptors, future numeric
+    region fields with tolerance, and reject dotted paramPath /
+    duplicates for region scope.
+  - call-template tests assert explicit and item-mode `region_create`
+    send the same region `name` field descriptor over the wire.
+  - list-templates tests assert `region_create` is now the tenth covered
+    field-verify template and keeps its descriptor free of `tolerance`,
+    `optional`, and `nullable`.
+  - manifest-alignment tests accept region scope and guard all four
+    legal scopes.
+  - Lua structure tests assert `verify.lua` has the region parser /
+    reader, stays decoupled from `refs.lua`, and still does not loop over
+    every `changed_id`.
+
+Decisions locked by user:
+
+- D1=a: `region_create` in Slice 12.
+- D2=a: verify only region `name`.
+- D3=a: synthetic region struct `{index,pos,rgnend,name}`.
+- D4=a: verify-local region scanner; do not reuse `refs.lua`.
+- D5=a: strict string equality.
+- D6=a: document the pipeline proof-of-life in `docs/TEMPLATE_SPEC.md`.
+- D7=a: document that create + `VERIFY_FAILED` may leave orphan regions.
+
+Not changed:
+
+- `region_create` Lua handler is unchanged; it still returns
+  `changed_ids = {"region:" .. params.name}` and owns
+  `REGION_NAME_INVALID` / `REGION_NAME_TAKEN`.
+- `refs.lua` is unchanged. Agent-facing region refs still use v0.1
+  name-shaped refs; GUID-shaped region refs remain unsupported.
+- `streetlight_bridge.lua` is unchanged. The order remains structural
+  check, field check, then `LAST_RESULT` finalize.
+- `render_region` still omits `expectedDelta` and keeps the artifact
+  path carve-out.
+- Region bounds (`pos` / `rgnend`) are not declared in Slice 12.
+
+Verification:
+
+- Focused registry / call-template / list-templates /
+  manifest-alignment / Lua-structure tests passed: **89/89**.
+- Full static gates passed: `npm test` **291/291**, `npm run build`
+  clean, `npm run check:manifest` green, and
+  `npm run check:error-codes-fresh` green.
+- `git diff --check` clean.
+- Focused reviewer pass found no P1/P2. The only P3 doc nit was stale
+  `docs/TEMPLATE_SPEC.md` wording that still called
+  `last_result:region:N` future-facing; it is fixed.
+- REAPER live smoke passed after the user fully restarted REAPER and
+  loaded the current bridge. Console preflight showed generation 1,
+  `loaded error_codes (22 codes)`, and the current template list.
+  Smoke run id: `slice12-1782804345538`; queue:
+  `/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
+- S0 `ping` returned `bridge:"connected"` and
+  `reaper_version:"7.71/macOS-arm64"`.
+- S1 `list_templates` reported 11 templates.
+  `region_create.expectedDelta` was exactly
+  `{count:1, creates:true, fields:[{scope:"region", field:"name",
+  paramPath:"name"}]}` with no `tolerance`, `optional`, or
+  `nullable`; `render_region` still had no `expectedDelta`.
+- S2/S3 happy paths passed: explicit region
+  `slice12-1782804345538-explicit` and item-derived region
+  `slice12-1782804345538-item` returned ok with
+  `changed_ids:["region:<name>"]`; `get_state regions` read both back.
+- S4 forced raw field mismatch passed: raw queue created orphan region
+  `slice12-1782804345538-raw-orphan` but expected
+  `slice12-1782804345538-raw-expected-other`, returning
+  `VERIFY_FAILED`, `recoverable:false`, and
+  `details.fields[0] = {scope:"region", field:"name",
+  expected:"slice12-1782804345538-raw-expected-other",
+  actual:"slice12-1782804345538-raw-orphan", ok:false}`.
+- S5 `LAST_RESULT` regression passed: read scopes did not pollute a
+  prior `last_result:item:0`; failed verify did not update
+  `LAST_RESULT`, proven by a following
+  `region_create item_id:"last_result:item:0"` producing
+  `slice12-1782804345538-lr-item-after-fail`; and
+  `last_result:track:0` survived `get_state project` before a
+  follow-up `media_import`.
+- S6 regression codes passed:
+  `REGION_NAME_INVALID`, `REGION_NAME_TAKEN`, cross-type
+  `REF_INVALID`, `PARAMS_INVALID`, and `SCOPE_NOT_IMPLEMENTED` for
+  `get_state(render)`.
+- S7 prior H2 representatives passed: `item_trim` optional field,
+  `item_fade` nullable field, `media_import` first-item `D_POSITION`,
+  `track_create` name, and `item_duplicate` `D_POSITION`.
+- S8 `render_region` carve-out passed: region
+  `slice12-1782804345538-render` rendered to a temp directory with
+  `changed_ids` containing only the WAV path; `/usr/bin/file` reported
+  `WAVE audio, Microsoft PCM, 24 bit, stereo 48000 Hz`; the temp render
+  dir was removed. Queue cleanup check ended with
+  `pending=0`, `running=0`, `done=0`.
 
 ### Kernel hardening Slice 11 (2026-06-30) — media_import count:any first-item field verification ✅ live-smoked
 
@@ -1424,8 +1572,8 @@ Verification so far:
 
 | | Done | Remaining |
 |---|---|---|
-| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-11 ✅; Slice 11 live-smoked locally | reviewer or commit/push only if requested |
-| Tests | Slice 11: 284/284 green; build / manifest / error-code / diff-check clean; focused suite 82/82; REAPER smoke `slice11-202606300552524`; Slice 10 pushed at `2babc5c` | reviewer optional |
+| Steps | 0, 1, 2, 3, 4a, 4b, 4c, 5, 6, 7, 8 ✅; Kernel Slices 01-12 ✅ live-smoked | Commit / push Slice 12 only on explicit ask |
+| Tests | Slice 12: 291/291 green; build / manifest / error-code clean; focused suite 89/89; reviewer no P1/P2; live smoke `slice12-1782804345538`; Slice 11 pushed at `f66b2db` | git versioning |
 
 **9 / 9 v0.1 steps shipped; kernel hardening Slice 10 is now
 live-smoked, committed, and pushed.** Step 6 (render) closed
@@ -1469,17 +1617,18 @@ was committed and pushed at `d3f8fe7`; Slice 05 was committed and
 pushed at `5ba6318`; Slice 06 was committed and pushed at `9f56ce0`;
 Slice 07 was committed and pushed at `9244be3`; Slice 08 was committed
 and pushed at `c923df9`; Slice 09 was committed and pushed at
-`bf15daa`; Slice 10 was committed and pushed at `2babc5c`. Slice 11 is
-code-done, static-green, and live-smoked locally, not committed.
+`bf15daa`; Slice 10 was committed and pushed at `2babc5c`; Slice 11
+was committed and pushed at `f66b2db`. Slice 12 is code-done,
+static-green, reviewer-pass, and live-smoked locally, not committed or
+pushed.
 `docs/PUBLIC_STORY.md` now tracks the public positioning, launch-copy
 blocks, technical moats, demo story, and "do not overclaim yet" language
 for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Review or commit Slice 11 if requested; otherwise Architect Slice
-   12.** Slice 11 is green locally and live-smoked, but no commit/push
-   was made in this run.
+1. **Commit / push Slice 12 only on explicit ask.** Local verification
+   is complete; the working tree is intentionally uncommitted.
 3. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.
@@ -4142,14 +4291,14 @@ streetlight/
 
 1. **Read `docs/RESPONSE_BUDGET.md` first.** Everything Step 4+ is bound by the shapes locked there.
 
-2. **Kernel hardening Slice 11 is code-done, static-green, and
-   live-smoked locally.** Read
+2. **Kernel hardening Slice 11 is code-done, static-green,
+   live-smoked, committed, and pushed at `f66b2db`.** Read
    `docs/plans/SLICE_11_ARCHITECT_PLAN.md` before touching code.
    Static baseline is green (`npm test` 284/284, build,
    `check:manifest`, `check:error-codes-fresh`, `git diff --check`).
    REAPER live smoke passed with run id `slice11-202606300552524`.
-   Reviewer pass is still optional/unrecorded. Slice 10 was live-smoked
-   and pushed at `2babc5c`.
+   Reviewer pass completed with no P1/P2; two P3 nits were fixed.
+   Slice 10 was live-smoked and pushed at `2babc5c`.
 
 4. **Step 3 + Step 4a contracts are still law.** `call_template`
    envelope shape is `{ template, changed_count, changed_ids, truncated }`.

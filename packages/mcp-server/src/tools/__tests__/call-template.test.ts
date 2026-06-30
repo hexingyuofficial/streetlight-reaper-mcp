@@ -214,7 +214,16 @@ describe("callTemplate", () => {
           ],
         },
       ],
-      ["region_create", { count: 1, creates: true }],
+      [
+        "region_create",
+        {
+          count: 1,
+          creates: true,
+          fields: [
+            { scope: "region", field: "name", param_path: "name" },
+          ],
+        },
+      ],
     ]);
     const validParamsByTemplate: Record<string, unknown> = {
       item_pitch: { item_id: "selected:0", semitones: 2 },
@@ -374,6 +383,56 @@ describe("callTemplate", () => {
           },
         ],
       });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: region_create explicit mode sends a region name field descriptor", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["region:Slice12"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "region_create",
+        params: { name: "Slice12", start: 0, end: 1 },
+      });
+      expect(bridge.seen.at(-1)?.expected_delta).toEqual({
+        count: 1,
+        creates: true,
+        fields: [
+          {
+            scope: "region",
+            field: "name",
+            param_path: "name",
+          },
+        ],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("on-wire: region_create item mode uses the same region name descriptor", async () => {
+    const bridge = startFakeBridge(queueDir, (cmd) =>
+      fakeTemplateOk(cmd.name ?? "unknown", ["region:Slice12Item"]),
+    );
+    try {
+      await callTemplate(client, registry, {
+        name: "region_create",
+        params: { name: "Slice12Item", item_id: "selected:0" },
+      });
+      const fields = bridge.seen.at(-1)?.expected_delta?.fields;
+      expect(fields).toEqual([
+        {
+          scope: "region",
+          field: "name",
+          param_path: "name",
+        },
+      ]);
+      expect(fields?.[0]).not.toHaveProperty("tolerance");
+      expect(fields?.[0]).not.toHaveProperty("optional");
+      expect(fields?.[0]).not.toHaveProperty("nullable");
     } finally {
       await bridge.stop();
     }
