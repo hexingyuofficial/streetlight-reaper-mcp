@@ -2,8 +2,10 @@
 -- Do not edit by hand. Run `npm run gen:error-codes` to regenerate.
 
 return {
+  ANALYSIS_FAILED         = "ANALYSIS_FAILED",
   ARTIFACT_INVALID        = "ARTIFACT_INVALID",
   ARTIFACT_NOT_FOUND      = "ARTIFACT_NOT_FOUND",
+  AUDIO_SOURCE_OFFLINE    = "AUDIO_SOURCE_OFFLINE",
   BRIDGE_NOT_RUNNING      = "BRIDGE_NOT_RUNNING",
   BRIDGE_TIMEOUT          = "BRIDGE_TIMEOUT",
   INTERNAL_ERROR          = "INTERNAL_ERROR",

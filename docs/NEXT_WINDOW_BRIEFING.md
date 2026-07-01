@@ -1,7 +1,7 @@
 # Next Window Briefing — 2026-07-01
 
 Use this as the first read after a context reset. It is the current truth
-after Slice 24 static verification and REAPER live smoke.
+after Slice 25 static implementation and REAPER live smoke.
 
 ## Snapshot
 
@@ -11,6 +11,35 @@ after Slice 24 static verification and REAPER live smoke.
   `e54fd9c kernel-hardening: slice 19 track color template`
 - Slice 19 is committed and pushed. It is static-green and live-smoked
   on REAPER `7.71/macOS-arm64`; H6's basic loop is closed.
+- Slice 25 is implemented, static-green, and REAPER live-smoked. Source:
+  `docs/plans/SLICE_25_ANALYSIS_CONTRACT_ARCHITECT_PLAN.md`.
+  User locked S25-D1..D6: opt-in `analysis` pack; one
+  `item_audio_analyze` template; only `loudness + peaks + silence`;
+  artifact refs `artifact:analysis:analysis:<id>`; no
+  `get_state(scope:"analysis")`; caps 120s / 200 silence segments /
+  49152 bytes; RMS dBFS not LUFS; sample peak not true peak. Static
+  gates currently green: build clean, `npm test` 428/428, default
+  `check:manifest` 12 templates, `core,analysis check:manifest` 13,
+  `core,analysis check:template-authoring` 13, and error codes fresh at
+  26. Full all-pack static sweep was not rerun in the live-smoke
+  window. Live smoke passed on REAPER `7.71/macOS-arm64` with bridge
+  `core,analysis`; the ready output showed 26 error codes, core
+  `(12 templates)`, analysis `(1 templates)`, and `item_audio_analyze`.
+  Initial attempt against `core,cleanup,delivery` returned
+  `TEMPLATE_NOT_FOUND`; the required reload is
+  `_G.STREETLIGHT_ENABLED_PACKS = "core,analysis"` plus
+  `dofile("/Users/Zhuanz/Documents/streetlight-reaper-mcp/reaper/streetlight_bridge.lua")`.
+  Smoke stamp `s25-live-1782914754219`; queue ended clean. Main refs:
+  `artifact:analysis:analysis:art_20260701140556948_005_4b21d8` and
+  anchor-check ref
+  `artifact:analysis:analysis:art_20260701140559453_009_c1f158`.
+  Metrics: `rms_dbfs=-10.792`, `peak_dbfs=-6.021`, silence
+  `0.385443s` across 2 bounded segments, summary/payload bytes
+  `639` / `1918`, warnings for RMS-not-LUFS and
+  sample-peak-not-true-peak. LAST_RESULT anchor
+  `guid:{53A9DB6E-F79C-A947-9EB4-30DB6C60F4BB}` survived analysis.
+  Empty/no-active-take negative returned `AUDIO_SOURCE_OFFLINE`; direct
+  `get_state(scope:"analysis")` returned `PARAMS_INVALID`.
 - Slice 24 is live-smoked and static-green. Source:
   `docs/plans/SLICE_24_DELIVERY_CLOSURE_ARCHITECT_PLAN.md`.
   User locked S24-D1..D10: opt-in `delivery` pack; `delivery_plan` and

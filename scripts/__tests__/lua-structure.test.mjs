@@ -354,7 +354,7 @@ describe("Lua bridge structure", () => {
     ]);
 
     expect(bridge).toMatch(/packs\/core\/error_codes\.lua/);
-    expect(bridge).toMatch(/EXPECTED_ERROR_CODE_COUNT\s*=\s*24/);
+    expect(bridge).toMatch(/EXPECTED_ERROR_CODE_COUNT\s*=\s*26/);
     expect(bridge).toMatch(/validate_error_codes\(ERRS\)/);
     expect(bridge).toMatch(/refs\.attach_errs\(ERRS\)/);
     expect(bridge).toMatch(/log\("loaded error_codes \("/);
@@ -545,6 +545,62 @@ describe("Lua bridge structure", () => {
     expect(deliveryLua).not.toMatch(/cleanup_apply_safe/);
   });
 
+  it("wires Slice 25 item_audio_analyze as a bounded read-only artifact template", async () => {
+    const [analysisManifest, analysisLua, templateIndex, authoringLint] = await Promise.all([
+      readRepoFile("reaper/packs/analysis/manifest.lua"),
+      readRepoFile("reaper/packs/analysis/templates/analysis.lua"),
+      readRepoFile("packages/mcp-server/src/templates/index.ts"),
+      readRepoFile("scripts/template-authoring-lint.mjs"),
+    ]);
+
+    expect(templateIndex).toMatch(/ANALYSIS_PACK_ID/);
+    expect(templateIndex).toMatch(/registerAnalysisTemplates/);
+    expect(authoringLint).toMatch(/analysis: "packages\/mcp-server\/src\/packs\/analysis"/);
+
+    expect(analysisManifest).toMatch(/name = "analysis"/);
+    expect(analysisManifest).toMatch(/item_audio_analyze\s*=\s*{/);
+    expect(analysisManifest).toMatch(/undoable\s*=\s*false/);
+    expect(analysisManifest).toMatch(/entity_kind = "artifact"/);
+    expect(analysisManifest).toMatch(/ref_prefix = "artifact:analysis:analysis:"/);
+    expect(analysisManifest).toMatch(/schema = "openreaper\.analysis\.item_audio\.v1"/);
+    expect(analysisManifest).toMatch(/updates_last_result = false/);
+    expect(analysisManifest).not.toMatch(/entity_buckets\s*=/);
+
+    expect(analysisLua).toMatch(/function M\.item_audio_analyze\(params, ctx\)/);
+    expect(analysisLua).toMatch(/ctx\.artifacts:write_json/);
+    expect(analysisLua).toMatch(/command_id = ctx\.command_id/);
+    expect(analysisLua).toMatch(/owner_pack = "analysis"/);
+    expect(analysisLua).toMatch(/scope = "analysis"/);
+    expect(analysisLua).toMatch(/producer_template = "item_audio_analyze"/);
+    expect(analysisLua).toMatch(/SCHEMA = "openreaper\.analysis\.item_audio\.v1"/);
+    expect(analysisLua).toMatch(/CreateTakeAudioAccessor/);
+    expect(analysisLua).toMatch(/GetAudioAccessorSamples/);
+    expect(analysisLua).toMatch(/DestroyAudioAccessor/);
+    expect(analysisLua).toMatch(/MAX_RANGE_SECONDS = 120/);
+    expect(analysisLua).toMatch(/MAX_SILENCE_SEGMENTS = 200/);
+    expect(analysisLua).toMatch(/MAX_ARTIFACT_JSON_BYTES = 49152/);
+    expect(analysisLua).toMatch(/ctx\.json\.array\(scan\.silence_segments\)/);
+    expect(analysisLua).toMatch(/RMS dBFS, not LUFS/);
+    expect(analysisLua).toMatch(/Sample peak, not true peak/);
+    expect(analysisLua).toMatch(/transients and loop_candidates are deferred/);
+    expect(analysisLua).toMatch(/errs\.AUDIO_SOURCE_OFFLINE/);
+    expect(analysisLua).toMatch(/errs\.ANALYSIS_FAILED/);
+    expect(analysisLua).not.toMatch(/scope = "transients"/);
+    expect(analysisLua).not.toMatch(/scope = "loop_candidates"/);
+    expect(analysisLua).not.toMatch(/loop_candidates =/);
+    expect(analysisLua).not.toMatch(/transients =/);
+    expect(analysisLua).not.toMatch(/OpenAudio/);
+    expect(analysisLua).not.toMatch(/ExecProcess/);
+    expect(analysisLua).not.toMatch(/Main_OnCommand/);
+    expect(analysisLua).not.toMatch(/InsertTrackAtIndex/);
+    expect(analysisLua).not.toMatch(/SetMediaTrackInfo_Value/);
+    expect(analysisLua).not.toMatch(/SetMediaItemInfo_Value/);
+    expect(analysisLua).not.toMatch(/SetMediaItemTakeInfo_Value/);
+    expect(analysisLua).not.toMatch(/GetSetMediaTrackInfo_String\([^\n]+true/);
+    expect(analysisLua).not.toMatch(/DeleteTrack/);
+    expect(analysisLua).not.toMatch(/render_region/);
+  });
+
   it("keeps Lua runtime code paths free of string-literal error codes", async () => {
     const files = [
       "reaper/streetlight_bridge.lua",
@@ -557,6 +613,7 @@ describe("Lua bridge structure", () => {
       "reaper/packs/core/lib/artifacts.lua",
       "reaper/packs/cleanup/templates/cleanup.lua",
       "reaper/packs/delivery/templates/delivery.lua",
+      "reaper/packs/analysis/templates/analysis.lua",
     ];
     const [errorsTs, ...texts] = await Promise.all([
       readRepoFile("packages/core/src/errors.ts"),

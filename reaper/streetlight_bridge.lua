@@ -31,7 +31,7 @@ local undo     = dofile(SCRIPT_DIR .. "packs/core/undo.lua")
 local verify   = dofile(SCRIPT_DIR .. "packs/core/verify.lua")
 local MANIFEST = nil
 
-local EXPECTED_ERROR_CODE_COUNT = 24
+local EXPECTED_ERROR_CODE_COUNT = 26
 
 local function validate_error_codes(errs)
   local count = 0

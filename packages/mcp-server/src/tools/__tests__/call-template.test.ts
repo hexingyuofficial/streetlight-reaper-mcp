@@ -231,6 +231,39 @@ describe("callTemplate", () => {
     }
   });
 
+  it("item_audio_analyze JSON artifact producer returns only refs in the locked envelope", async () => {
+    const artifactRef =
+      "artifact:analysis:analysis:art_20260701010101999_000_ab12cd";
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+    const bridge = startFakeBridge(queueDir, () =>
+      fakeTemplateOk("item_audio_analyze", [artifactRef]),
+    );
+    try {
+      const result = await callTemplate(client, analysisRegistry, {
+        name: "item_audio_analyze",
+        params: { item_id: "selected:0" },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.result).toEqual({
+        template: "item_audio_analyze",
+        changed_count: 1,
+        changed_ids: [artifactRef],
+        truncated: false,
+      });
+      expect(result.result).not.toHaveProperty("artifact");
+      expect(result.result).not.toHaveProperty("summary");
+      expect(result.result).not.toHaveProperty("payload");
+      expect(result.result).not.toHaveProperty("loudness");
+      expect(result.result).not.toHaveProperty("peaks");
+      expect(result.result).not.toHaveProperty("silence");
+      expect(bridge.seen[0]?.expected_delta).toBeUndefined();
+    } finally {
+      await bridge.stop();
+    }
+  });
+
   it("keeps cleanup_plan disabled unless the cleanup pack is enabled", async () => {
     const result = await callTemplate(client, registry, {
       name: "cleanup_plan",
@@ -247,6 +280,18 @@ describe("callTemplate", () => {
     const result = await callTemplate(client, registry, {
       name: "delivery_plan",
       params: { region_id: "region:var_01", output_dir: "/tmp/openreaper-delivery" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TEMPLATE_NOT_FOUND");
+    }
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
+  it("keeps analysis templates disabled unless the analysis pack is enabled", async () => {
+    const result = await callTemplate(client, registry, {
+      name: "item_audio_analyze",
+      params: { item_id: "selected:0" },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -296,6 +341,21 @@ describe("callTemplate", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("PARAMS_INVALID");
       expect(result.error.message).toMatch(/delivery_plan_ref/);
+    }
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
+  it("validates item_audio_analyze features before queue write", async () => {
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+    const result = await callTemplate(client, analysisRegistry, {
+      name: "item_audio_analyze",
+      params: { item_id: "selected:0", features: ["transients"] },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("PARAMS_INVALID");
+      expect(result.error.message).toMatch(/features/);
     }
     expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
   });

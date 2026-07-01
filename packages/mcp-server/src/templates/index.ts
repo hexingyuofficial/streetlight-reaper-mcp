@@ -23,6 +23,10 @@ import {
   DELIVERY_PACK_ID,
   registerDeliveryTemplates,
 } from "../packs/delivery/index.js";
+import {
+  ANALYSIS_PACK_ID,
+  registerAnalysisTemplates,
+} from "../packs/analysis/index.js";
 
 /**
  * Register every v0.1 core-pack template with the MCP server's registry.
@@ -64,6 +68,8 @@ export function registerEnabledTemplates(
       registerCleanupTemplates(registry);
     } else if (pack === DELIVERY_PACK_ID) {
       registerDeliveryTemplates(registry);
+    } else if (pack === ANALYSIS_PACK_ID) {
+      registerAnalysisTemplates(registry);
     } else if (pack === PACK_CONTRACT_FIXTURE_PACK_ID) {
       registerPackContractFixtureTemplates(registry);
     } else {

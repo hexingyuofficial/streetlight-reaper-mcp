@@ -51,6 +51,10 @@ export const ErrorCodes = {
   ARTIFACT_NOT_FOUND: "ARTIFACT_NOT_FOUND",
   ARTIFACT_INVALID: "ARTIFACT_INVALID",
 
+  // Analysis
+  ANALYSIS_FAILED: "ANALYSIS_FAILED",
+  AUDIO_SOURCE_OFFLINE: "AUDIO_SOURCE_OFFLINE",
+
   // Runtime verification
   // Raised after a mutating template has completed when the bridge's
   // structural before/after count check disagrees with descriptor

@@ -226,14 +226,51 @@ describe("listTemplates", () => {
     });
   });
 
-  it("can enable cleanup and fixture packs together", () => {
+  it("exposes analysis pack ownership and artifact metadata when enabled", () => {
     const registry = new CapabilityRegistry();
-    registerEnabledTemplates(registry, ["core", "cleanup", "delivery", "pack_contract_fixture"]);
+    registerEnabledTemplates(registry, ["core", "analysis"]);
     const result = listTemplates(registry);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.result.templates).toHaveLength(17);
+    expect(result.result.templates).toHaveLength(13);
+    expect(
+      result.result.templates.find((t) => t.name === "cleanup_plan"),
+    ).toBeUndefined();
+
+    const itemAudioAnalyze = result.result.templates.find(
+      (t) => t.name === "item_audio_analyze",
+    );
+    expect(itemAudioAnalyze).toBeDefined();
+    expect(itemAudioAnalyze?.pack).toBe("analysis");
+    expect(itemAudioAnalyze?.risk).toBe("filesystem");
+    expect(itemAudioAnalyze?.mutates).toBe(false);
+    expect(itemAudioAnalyze?.undoable).toBe(false);
+    expect(itemAudioAnalyze?.entity_kind).toBe("artifact");
+    expect(itemAudioAnalyze?.undo_flags).toEqual([]);
+    expect(itemAudioAnalyze).not.toHaveProperty("expectedDelta");
+    expect(itemAudioAnalyze?.artifact).toEqual({
+      kind: "json",
+      scope: "analysis",
+      ref_prefix: "artifact:analysis:analysis:",
+      read_scope: "artifact",
+      updates_last_result: false,
+      schema: "openreaper.analysis.item_audio.v1",
+    });
+    expect(itemAudioAnalyze?.examples[0]?.params).toEqual({
+      item_id: "selected:0",
+    });
+  });
+
+  it("can enable all opt-in packs together", () => {
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, ["core", "analysis", "cleanup", "delivery", "pack_contract_fixture"]);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.result.templates).toHaveLength(18);
+    expect(result.result.templates.some((t) => t.name === "item_audio_analyze")).toBe(true);
     expect(result.result.templates.some((t) => t.name === "cleanup_plan")).toBe(true);
     expect(result.result.templates.some((t) => t.name === "delivery_plan")).toBe(true);
     expect(result.result.templates.some((t) => t.name === "delivery_report")).toBe(true);

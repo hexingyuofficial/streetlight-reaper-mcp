@@ -11,6 +11,55 @@ first.
 
 ## Current Status
 
+**Slice 25 ✅ live-smoked / static-green
+(2026-07-01).** Source:
+`docs/plans/SLICE_25_ANALYSIS_CONTRACT_ARCHITECT_PLAN.md`. This is
+Phase 3 Analysis Contract Foundation. User locked S25-D1..D6:
+opt-in `analysis` pack; one template `item_audio_analyze`; first
+feature set limited to `loudness + peaks + silence`; artifact refs use
+`artifact:analysis:analysis:<id>`; no `get_state(scope:"analysis")`;
+caps are 120 seconds max range, 200 silence segments, and 49152 byte
+write-side artifact JSON preflight; loudness v1 means RMS dBFS, not
+LUFS, and peaks are sample peaks, not true peaks. Scope deliberately
+excludes transients, loop candidates, OpenAudio, AI generation, external
+sample search, MIDI, FX, routing, render migration, and any core
+parking. Static gates currently green: `npm run build` clean,
+`npm test` 428/428, default `check:manifest` 12 templates,
+`core,analysis check:manifest` 13 templates,
+`core,analysis check:template-authoring` 13 templates, and
+`check:error-codes-fresh` 26 codes fresh. Full all-pack static sweep was
+not rerun in the live-smoke window. REAPER live smoke passed on
+`7.71/macOS-arm64` with bridge `core,analysis`. Initial attempt against
+the previous `core,cleanup,delivery` bridge returned
+`TEMPLATE_NOT_FOUND`; the required reload is
+`_G.STREETLIGHT_ENABLED_PACKS = "core,analysis"` plus
+`dofile("/Users/Zhuanz/Documents/streetlight-reaper-mcp/reaper/streetlight_bridge.lua")`.
+Ready output showed `loaded error_codes (26 codes)`, core
+`(12 templates)`, analysis `(1 templates)`, and templates including
+`item_audio_analyze`. Smoke stamp `s25-live-1782914754219`; queue
+`/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
+`ping` returned `bridge:"connected"`; `list_templates` returned 13
+templates and exposed `item_audio_analyze` as pack `analysis`, entity
+kind `artifact`, ref prefix `artifact:analysis:analysis:`, schema
+`openreaper.analysis.item_audio.v1`, and `updates_last_result:false`.
+WAV fixture `/tmp/s25-live-1782914754219-silence-tone.wav` was imported
+and selected as `guid:{77C33FC5-20F7-9B4A-83C0-1704F568AA25}`. Main
+analysis ref:
+`artifact:analysis:analysis:art_20260701140556948_005_4b21d8`.
+Summary/payload reads showed computed features `loudness, peaks,
+silence`, `rms_dbfs=-10.792`, `peak_dbfs=-6.021`, silence
+`0.385443s` across 2 bounded segments with `truncated:false`, response
+bytes `639` summary / `1918` payload, and warnings for RMS-not-LUFS and
+sample-peak-not-true-peak. LAST_RESULT anchor
+`guid:{53A9DB6E-F79C-A947-9EB4-30DB6C60F4BB}` survived analysis;
+`track_rename last_result:track:0` hit that GUID after artifact ref
+`artifact:analysis:analysis:art_20260701140559453_009_c1f158`.
+Empty/no-active-take negative returned `AUDIO_SOURCE_OFFLINE`
+(`Item has no active take to analyze`). Direct
+`get_state(scope:"analysis")` returned `PARAMS_INVALID`. Queue ended
+`pending=0`, `running=0`, `done=0`. Smoke-created tracks/items remain
+in the current REAPER project for manual undo/delete.
+
 **Slice 24 ✅ live-smoked / static-green
 (2026-07-01).** Source:
 `docs/plans/SLICE_24_DELIVERY_CLOSURE_ARCHITECT_PLAN.md`. This is
