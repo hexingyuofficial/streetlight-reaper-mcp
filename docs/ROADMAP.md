@@ -1,5 +1,11 @@
 # Streetlight Roadmap
 
+Post-H6 execution note: the authoritative plan for the first real
+OpenReaper version is
+`docs/plans/OPENREAPER_FIRST_REAL_VERSION_EXECUTION_PLAN.md`. This roadmap
+remains public-facing direction; Slice 20+ implementation scope should be
+derived from the execution plan.
+
 ## Principle
 
 Streetlight should grow from a reliable REAPER control kernel, not from a large app shell.

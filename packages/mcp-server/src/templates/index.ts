@@ -1,4 +1,4 @@
-import type { CapabilityRegistry } from "@streetlight/core";
+import { parseEnabledPacks, type CapabilityRegistry } from "@streetlight/core";
 import { itemPitchDefinition } from "./item-pitch.js";
 import { itemMoveDefinition } from "./item-move.js";
 import { itemRateDefinition } from "./item-rate.js";
@@ -11,6 +11,10 @@ import { itemFadeDefinition } from "./item-fade.js";
 import { mediaImportDefinition } from "./media-import.js";
 import { regionCreateDefinition } from "./region-create.js";
 import { renderRegionDefinition } from "./render-region.js";
+import {
+  PACK_CONTRACT_FIXTURE_PACK_ID,
+  registerPackContractFixtureTemplates,
+} from "../packs/pack-contract-fixture/index.js";
 
 /**
  * Register every v0.1 core-pack template with the MCP server's registry.
@@ -39,4 +43,19 @@ export function registerCoreTemplates(registry: CapabilityRegistry): void {
   registry.register(mediaImportDefinition);
   registry.register(regionCreateDefinition);
   registry.register(renderRegionDefinition);
+}
+
+export function registerEnabledTemplates(
+  registry: CapabilityRegistry,
+  enabledPacks = parseEnabledPacks(process.env.STREETLIGHT_ENABLED_PACKS),
+): void {
+  for (const pack of enabledPacks) {
+    if (pack === "core") {
+      registerCoreTemplates(registry);
+    } else if (pack === PACK_CONTRACT_FIXTURE_PACK_ID) {
+      registerPackContractFixtureTemplates(registry);
+    } else {
+      throw new Error(`Unknown pack id: ${pack}`);
+    }
+  }
 }

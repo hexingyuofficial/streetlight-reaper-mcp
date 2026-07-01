@@ -3,7 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { z } from "zod";
-import { type Result, ok } from "@streetlight/core";
+import { parseEnabledPacks, type Result, ok } from "@streetlight/core";
+
+const RECIPE_ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 /**
  * Envelope-only Zod schema per Step 7 decision A5: validate the top-level
@@ -14,7 +16,13 @@ import { type Result, ok } from "@streetlight/core";
  */
 const RecipeEnvelopeSchema = z
   .object({
-    id: z.string().min(1),
+    id: z
+      .string()
+      .min(1)
+      .regex(
+        RECIPE_ID_PATTERN,
+        "recipe id must be lower_snake_case without ':'",
+      ),
     description: z.string().min(1),
     version: z.union([z.string(), z.number()]).optional(),
     inputs: z.record(z.unknown()).optional(),
@@ -22,16 +30,28 @@ const RecipeEnvelopeSchema = z
   })
   .passthrough();
 
-export type RecipeMetadata = z.infer<typeof RecipeEnvelopeSchema>;
+export type RecipeMetadata = z.infer<typeof RecipeEnvelopeSchema> & {
+  pack: string;
+  qualified_id: string;
+};
+type RecipeEnvelope = z.infer<typeof RecipeEnvelopeSchema>;
 
 export interface RecipeWarning {
+  pack: string;
   file: string;
   error: string;
 }
 
+export interface RecipeRoot {
+  pack: string;
+  recipes_dir: string;
+}
+
 export interface ListRecipesResult {
   recipes: RecipeMetadata[];
+  /** Back-compat pointer to the core recipe directory / env override. */
   recipes_dir: string;
+  recipe_roots: RecipeRoot[];
   warnings: RecipeWarning[];
 }
 
@@ -68,10 +88,48 @@ export function resolveRecipesDir(): string {
   return path.resolve(here, "..", "..", "..", "..", "recipes");
 }
 
+function resolveRepoRootFromHere(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  let dir = here;
+  for (let depth = 0; depth < 8; depth++) {
+    try {
+      const recipes = statSync(path.join(dir, "recipes"));
+      const reaper = statSync(path.join(dir, "reaper"));
+      if (recipes.isDirectory() && reaper.isDirectory()) return dir;
+    } catch {
+      // keep walking
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(here, "..", "..", "..", "..");
+}
+
+export function resolveRecipeRoots(
+  enabledPacks = parseEnabledPacks(process.env.STREETLIGHT_ENABLED_PACKS),
+): RecipeRoot[] {
+  const override = process.env.STREETLIGHT_RECIPES_DIR;
+  if (override && override.length > 0) {
+    return [{ pack: "core", recipes_dir: path.resolve(override) }];
+  }
+
+  const repoRoot = resolveRepoRootFromHere();
+  return enabledPacks.map((pack) => {
+    if (pack === "core") {
+      return { pack, recipes_dir: path.join(repoRoot, "recipes") };
+    }
+    return {
+      pack,
+      recipes_dir: path.join(repoRoot, "reaper", "packs", pack, "recipes"),
+    };
+  });
+}
+
 async function loadOneRecipe(
   fullPath: string,
 ): Promise<
-  { ok: true; recipe: RecipeMetadata } | { ok: false; error: string }
+  { ok: true; recipe: RecipeEnvelope } | { ok: false; error: string }
 > {
   let text: string;
   try {
@@ -104,42 +162,78 @@ async function loadOneRecipe(
  * never returns ok:false for a single bad recipe. The tool only fails if
  * the listing infrastructure itself breaks (e.g. EACCES on the dir).
  */
-export async function listRecipes(): Promise<Result<ListRecipesResult>> {
-  const recipesDir = resolveRecipesDir();
+export async function listRecipes(
+  enabledPacks = parseEnabledPacks(process.env.STREETLIGHT_ENABLED_PACKS),
+): Promise<Result<ListRecipesResult>> {
+  const recipeRoots = resolveRecipeRoots(enabledPacks);
+  const recipesDir = recipeRoots[0]?.recipes_dir ?? resolveRecipesDir();
   const warnings: RecipeWarning[] = [];
-  let entries: string[];
-  try {
-    entries = await fs.readdir(recipesDir);
-  } catch (e) {
-    const err = e as NodeJS.ErrnoException;
-    if (err.code === "ENOENT") {
-      const warning: RecipeWarning = {
-        file: recipesDir,
-        error: "recipes directory not found",
-      };
-      process.stderr.write(
-        `[streetlight-mcp] list_recipes: ${warning.error} at ${recipesDir}\n`,
-      );
-      return ok({ recipes: [], recipes_dir: recipesDir, warnings: [warning] });
-    }
-    throw e;
-  }
-  const yamlFiles = entries
-    .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
-    .sort();
   const recipes: RecipeMetadata[] = [];
-  for (const name of yamlFiles) {
-    const full = path.join(recipesDir, name);
-    const loaded = await loadOneRecipe(full);
-    if (loaded.ok) {
-      recipes.push(loaded.recipe);
-    } else {
-      const warning: RecipeWarning = { file: name, error: loaded.error };
-      warnings.push(warning);
-      process.stderr.write(
-        `[streetlight-mcp] list_recipes: skipping ${name} — ${loaded.error}\n`,
-      );
+  const seenQualifiedIds = new Set<string>();
+
+  for (const root of recipeRoots) {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(root.recipes_dir);
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === "ENOENT") {
+        const warning: RecipeWarning = {
+          pack: root.pack,
+          file: root.recipes_dir,
+          error: "recipes directory not found",
+        };
+        warnings.push(warning);
+        process.stderr.write(
+          `[streetlight-mcp] list_recipes: ${warning.error} for pack ${root.pack} at ${root.recipes_dir}\n`,
+        );
+        continue;
+      }
+      throw e;
+    }
+    const yamlFiles = entries
+      .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+      .sort();
+    for (const name of yamlFiles) {
+      const full = path.join(root.recipes_dir, name);
+      const loaded = await loadOneRecipe(full);
+      if (loaded.ok) {
+        const qualifiedId = `${root.pack}:${loaded.recipe.id}`;
+        if (seenQualifiedIds.has(qualifiedId)) {
+          const warning: RecipeWarning = {
+            pack: root.pack,
+            file: name,
+            error: `duplicate recipe qualified_id ${qualifiedId}`,
+          };
+          warnings.push(warning);
+          process.stderr.write(
+            `[streetlight-mcp] list_recipes: skipping ${root.pack}/${name} — ${warning.error}\n`,
+          );
+          continue;
+        }
+        seenQualifiedIds.add(qualifiedId);
+        recipes.push({
+          ...loaded.recipe,
+          pack: root.pack,
+          qualified_id: qualifiedId,
+        });
+      } else {
+        const warning: RecipeWarning = {
+          pack: root.pack,
+          file: name,
+          error: loaded.error,
+        };
+        warnings.push(warning);
+        process.stderr.write(
+          `[streetlight-mcp] list_recipes: skipping ${root.pack}/${name} — ${loaded.error}\n`,
+        );
+      }
     }
   }
-  return ok({ recipes, recipes_dir: recipesDir, warnings });
+  return ok({
+    recipes,
+    recipes_dir: recipesDir,
+    recipe_roots: recipeRoots,
+    warnings,
+  });
 }

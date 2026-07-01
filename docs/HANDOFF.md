@@ -1,33 +1,93 @@
-# Handoff — 2026-07-01 (Kernel Slice 19; track_color live-smoked)
+# Handoff — 2026-07-01 (Slice 20B ✅ live-smoked; pack contract foundation)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
 ## Where the project is
 
 - Path: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`, git repo on
-  branch `main`. Recent pushed checkpoints: `baa13bd` Kernel Slice
-  01, `e93d39e` Kernel Slice 02, `4e80839` Kernel Slice 03,
-  `d3f8fe7` Kernel Slice 04, `5ba6318` Kernel Slice 05,
-  `9f56ce0` Kernel Slice 06, `9244be3` Kernel Slice 07,
-  `c923df9` Kernel Slice 08, `bf15daa` Kernel Slice 09,
-  `2babc5c` Kernel Slice 10, `f66b2db` Kernel Slice 11,
-  `6e4a02f` Kernel Slice 12, `f998507` Kernel Slice 13, and
-  `56c57cb` Kernel Slice 14. Local commits ahead of `origin/main` are:
-  Slice 15 at `39bf940 kernel-hardening: slice 15 render dedup`
-  (live-smoked), Slice 16 at `0996b5b kernel-hardening: slice 16
-  template authoring guide + lint` (static-green), Slice 16 reviewer
-  follow-up at `45e0193 docs: follow up slice 16 authoring review`,
-  Slice 17 as local save point `kernel-hardening: slice 17 define
-  template helper` (static-green, not pushed), and Slice 17 reviewer
-  follow-up at `8f0b505 docs: follow up slice 17 review`, and Slice
-  18 at `88b0edf kernel-hardening: slice 18 dry-run template
-  scaffolder` (pushed by the user via desktop). Slice 19 is the current
-  working-tree slice: H6 closure template `track_color`,
-  live-smoked/static-green, not committed yet. The user manages
-  versioning out-of-band — do NOT commit, branch, push, or reset
-  without an explicit ask. User preference (2026-06-29): local commits
-  are okay as explicit save points, but avoid pushing during work hours
-  unless the user explicitly makes an exception.
+  branch `main`. Latest pushed checkpoints include Slice 18 at
+  `88b0edf kernel-hardening: slice 18 dry-run template scaffolder`,
+  Slice 19 at `e54fd9c kernel-hardening: slice 19 track color
+  template`, and the follow-up docs sync at `7bbd426 docs: sync slice
+  19 pushed state`. Slice 19 is committed, pushed, static-green, and
+  live-smoked; H6's basic loop is closed. Slice 20B is currently in the
+  working tree, not yet committed or pushed: Phase 0.5 Pack Contract
+  Foundation is reviewer-passed, static-green, and live-smoked. The user
+  manages versioning out-of-band — do NOT commit,
+  branch, push, or reset without an
+  explicit ask. User preference (2026-06-29): local commits are okay as
+  explicit save points, but avoid pushing during work hours unless the
+  user explicitly makes an exception.
+- **Slice 20B ✅ live-smoked / commit-ready
+  (2026-07-01).** Source:
+  `docs/plans/SLICE_20B_PACK_CONTRACT_ARCHITECT_PLAN.md`. This slice
+  implements the minimum pack-loading contract so future cleanup / loop
+  / MIDI / routing / FX / unsafe domains do not get parked in `core`.
+  Current changes:
+  - `packages/core/src/packs.ts` adds `parseEnabledPacks(...)` and the
+    pack-id contract (`^[a-z][a-z0-9_]*$`, default `[core]`, require
+    core, reject duplicates).
+  - `packages/mcp-server/src/templates/index.ts` keeps
+    `registerCoreTemplates(...)` and adds `registerEnabledTemplates(...)`.
+    `packages/mcp-server/src/index.ts` reads `STREETLIGHT_ENABLED_PACKS`
+    and logs enabled packs.
+  - `list_templates` remains bridge-free; pack ownership is exposed
+    through existing template metadata. Default core count is 12; fixture
+    enabled count is 13.
+  - `packages/mcp-server/src/tools/list-recipes.ts` now returns
+    `recipe_roots[]`, pack ownership, and `qualified_id =
+    "<pack>:<id>"`. The legacy `recipes_dir` still points to core/env
+    override for back-compat.
+  - `scripts/manifest-alignment.mjs` is pack-aware and checks each
+    enabled Lua manifest plus entity-bucket conflicts. Default gate:
+    12 templates across 1 pack. Fixture-enabled gate: 13 templates
+    across 2 packs.
+  - `scripts/template-authoring-lint.mjs` is pack-aware; default gate:
+    12 templates. Fixture-enabled gate: 13 templates.
+  - `reaper/packs/core/lib/pack_loader.lua` loads repo-local static
+    packs, validates pack ids, requires `core`, rejects duplicate
+    template names and bucket conflicts, and annotates manifest entries
+    with `entry.pack`.
+  - `reaper/streetlight_bridge.lua` now loads static enabled packs
+    instead of `dofile`ing only core. For GUI REAPER smoke, set
+    `_G.STREETLIGHT_ENABLED_PACKS = "core,pack_contract_fixture"` before
+    loading `start_bridge.lua`.
+  - Test-only fixture pack:
+    `packages/mcp-server/src/packs/pack-contract-fixture/`,
+    `reaper/packs/pack_contract_fixture/`,
+    `reaper/packs/pack_contract_fixture/recipes/fixture_pack_smoke.yaml`,
+    and `docs/packs/pack_contract_fixture/README.md`.
+  - Reviewer Feynman found two real contract gaps and both are fixed:
+    non-core packs can no longer introduce new entity kinds in Slice
+    20B (runtime loader + manifest alignment + Lua-structure tests), and
+    recipe ids now must be unambiguous lower_snake_case without `:`;
+    duplicate `qualified_id`s are skipped with warnings.
+  - Static gates after reviewer follow-up: `npm test` 376/376,
+    `npm run build` clean, `npm run check:error-codes-fresh` green,
+    default + fixture-enabled `check:manifest`, default +
+    fixture-enabled `check:template-authoring`, and `git diff --check`
+    clean.
+  - Smoke agent Banach ran static verification and returned a REAPER
+    fixture smoke recipe. Codex then ran the live smoke against REAPER
+    `7.71/macOS-arm64` after the user loaded the bridge with:
+    `_G.STREETLIGHT_ENABLED_PACKS = "core,pack_contract_fixture"`.
+    Console showed `loaded pack 'core' v0.1.0 (12 templates)`,
+    `loaded pack 'pack_contract_fixture' v0.1.0 (1 templates)`, and
+    ready line with `fixture_track_rename`.
+  - Live-smoke stamp `1782881931841`. Track GUID:
+    `guid:{76CC9D4E-3F98-CE4E-B02A-A34C0F03D870}`.
+    `ping` connected; fixture-enabled `list_templates` returned 13
+    templates; fixture-enabled `list_recipes` returned
+    `core:impact_variations` and
+    `pack_contract_fixture:fixture_pack_smoke` with zero warnings;
+    `track_create`, core `track_color`, fixture
+    `fixture_track_rename`, and core `track_rename` all returned the
+    same track GUID through `last_result:track:0`; missing fixture track
+    returned typed `TRACK_NOT_FOUND`; default core-only registry returned
+    12 templates, fixture absent, and `TEMPLATE_NOT_FOUND` before queue
+    write; queue cleanup ended `pending=0`, `running=0`, `done=0`.
+  - Pending before local commit: user says `commit Slice 20B` (or
+    equivalent). Do not push unless explicitly requested.
 - Slice 19 baseline: full `npm test` → **357/357 green**
   (Slice 18 baseline 348/348 plus 8 new `track_color` fake-bridge tests
   and 1 new Lua-structure test), `npm run build` → clean,
@@ -84,9 +144,23 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   source. Update it whenever a capability becomes implemented and
   live-smoked. Keep future-facing claims phrased as roadmap until they
   are real.
+- `docs/plans/OPENREAPER_FIRST_REAL_VERSION_EXECUTION_PLAN.md` is the
+  authoritative post-H6 guide for the first real OpenReaper version.
+  Future Slice 20+ architect packets should derive their scope, gates,
+  verification strategy, and non-goals from that file rather than
+  inventing a parallel chat-only plan.
+- **Rolling Slice Workflow (Slice 20+):** Architect owns large plans;
+  Codex executes approved packets in this repo; Codex pulls reviewer and
+  smoke subagents; the user handles key decisions and final acceptance;
+  docs are updated during every slice to survive context resets; local
+  commits happen only on explicit user ask; pushes happen only on
+  explicit push ask. When a slice finishes, Codex should ask the user for
+  the next architect prompt/command, the user feeds it to the architect,
+  then Codex implements the returned packet.
 - **Kernel hardening Slice 19 ✅ live-smoked / static-green /
-  uncommitted (2026-07-01).** Scope from the Architect packet in the
-  conversation. This is the **H6 closure slice**: use the Slice 18
+  committed and pushed at `e54fd9c` (2026-07-01).** Scope from the
+  Architect packet in the conversation. This is the **H6 closure
+  slice**: use the Slice 18
   scaffolder flow to land a real low-risk template, `track_color`.
   - New file `packages/mcp-server/src/templates/track-color.ts` defines
     `track_color` with params `{ track_id, color }`, where `color` is
@@ -1348,10 +1422,14 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 1. **Read the user's MOST RECENT message in this new window.**
    Three plausible paths:
 
-   (a) **"Start the next architect packet."** Slice 19 is committed and
-       pushed at `e54fd9c`. It is static-green and live-smoked on
-       REAPER `7.71/macOS-arm64`; H6's basic loop is closed. Further
-       factory automation needs the next larger plan.
+   (a) **"Continue the rolling Slice 20+ workflow."** Slice 19 is
+       committed and pushed at `e54fd9c`. It is static-green and
+       live-smoked on REAPER `7.71/macOS-arm64`; H6's basic loop is
+       closed. Use
+       `docs/plans/OPENREAPER_FIRST_REAL_VERSION_EXECUTION_PLAN.md` and
+       the latest slice packet. Architect plans; Codex executes; Codex
+       pulls reviewer/smoke; docs move with the slice; local commit only
+       on explicit ask; push only on explicit push ask.
 
    (b) **"Codex/reviewer found a bug in Slice 19 or earlier."** Locked
        iteration loop: confirm the bug from code → name the fix + any

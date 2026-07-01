@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { CapabilityRegistry } from "@streetlight/core";
 import { z } from "zod";
 import { listTemplates } from "../list-templates.js";
-import { registerCoreTemplates } from "../../templates/index.js";
+import {
+  registerCoreTemplates,
+  registerEnabledTemplates,
+} from "../../templates/index.js";
 
 const regionCreateExpectedFields = [
   { scope: "region", field: "name", paramPath: "name" },
@@ -75,6 +78,46 @@ describe("listTemplates", () => {
     expect(callTemplateEnvelope?.examples[0]?.params).toEqual({
       item_id: "selected:0",
       semitones: -12,
+    });
+  });
+
+  it("keeps fixture pack disabled by default", () => {
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, ["core"]);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.templates).toHaveLength(12);
+    expect(
+      result.result.templates.find((t) => t.name === "fixture_track_rename"),
+    ).toBeUndefined();
+    expect(
+      result.result.templates.every((t) => t.pack === "core"),
+    ).toBe(true);
+  });
+
+  it("exposes fixture pack ownership when enabled", () => {
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, ["core", "pack_contract_fixture"]);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.templates).toHaveLength(13);
+
+    const trackColor = result.result.templates.find((t) => t.name === "track_color");
+    expect(trackColor?.pack).toBe("core");
+
+    const fixture = result.result.templates.find(
+      (t) => t.name === "fixture_track_rename",
+    );
+    expect(fixture).toBeDefined();
+    expect(fixture?.pack).toBe("pack_contract_fixture");
+    expect(fixture?.risk).toBe("write_safe");
+    expect(fixture?.entity_kind).toBe("track");
+    expect(fixture?.undo_flags).toEqual(["TRACKCFG"]);
+    expect(fixture?.expectedDelta).toEqual({
+      count: 1,
+      fields: [{ scope: "track", field: "P_NAME", paramPath: "name" }],
     });
   });
 

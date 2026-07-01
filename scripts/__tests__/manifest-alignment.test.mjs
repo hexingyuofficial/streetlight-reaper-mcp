@@ -3,12 +3,19 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CapabilityRegistry } from "../../packages/core/src/registry.ts";
-import { registerCoreTemplates } from "../../packages/mcp-server/src/templates/index.ts";
+import {
+  registerCoreTemplates,
+  registerEnabledTemplates,
+} from "../../packages/mcp-server/src/templates/index.ts";
 import {
   MANIFEST_FORMAT_UNEXPECTED,
   buildRegistrySnapshot,
+  diffEntityBucketConflicts,
   diffManifestAlignment,
+  diffPackManifestAlignment,
+  parseManifestEntityBuckets,
   parseManifestLua,
+  parseManifestLuaFull,
   stripLuaLineComments,
 } from "../manifest-alignment.mjs";
 
@@ -17,6 +24,12 @@ const repoRoot = path.resolve(__dirname, "../..");
 
 const SAMPLE_MANIFEST = `
 return {
+  name = "core",
+  version = "0.1.0",
+  entity_buckets = {
+    item = "items",
+    track = "tracks",
+  },
   templates = {
     item_pitch = {
       handler = item_templates.item_pitch,
@@ -63,6 +76,23 @@ describe("manifest alignment helpers", () => {
       undo_flags: [],
       entity_kind: "render",
     });
+  });
+
+  it("parses pack identity and entity buckets", () => {
+    const parsed = parseManifestLuaFull(SAMPLE_MANIFEST);
+    expect(parsed.name).toBe("core");
+    expect(parsed.version).toBe("0.1.0");
+    expect([...parsed.entity_buckets.entries()]).toEqual([
+      ["item", "items"],
+      ["track", "tracks"],
+    ]);
+    expect(parsed.templates.get("item_pitch")?.entity_kind).toBe("item");
+  });
+
+  it("allows manifests without local entity bucket declarations", () => {
+    expect(parseManifestEntityBuckets('return { name = "fixture", templates = {} }')).toEqual(
+      new Map(),
+    );
   });
 
   it("rejects unsupported multi-line undo_flags expressions", () => {
@@ -112,6 +142,30 @@ return { templates = {
     expect(errors).toContain("MISSING_IN_LUA:ts_only");
     expect(errors).toContain("MISSING_IN_TS:media_import");
     expect(errors).toContain("MISSING_IN_TS:render_region");
+  });
+
+  it("reports pack identity mismatches before template diffs", () => {
+    const registry = new CapabilityRegistry();
+    registerCoreTemplates(registry);
+    const ts = buildRegistrySnapshot(registry);
+    const manifest = parseManifestLuaFull(SAMPLE_MANIFEST.replace('name = "core"', 'name = "wrong"'));
+    const errors = diffPackManifestAlignment("core", ts, manifest);
+
+    expect(errors).toContain('PACK_NAME_MISMATCH:core: lua="wrong"');
+  });
+
+  it("reports entity bucket conflicts across pack manifests", () => {
+    const errors = diffEntityBucketConflicts([
+      { name: "core", entity_buckets: new Map([["item", "items"]]) },
+      { name: "other", entity_buckets: new Map([["item", "objects"]]) },
+      { name: "third", entity_buckets: new Map([["region", "items"]]) },
+    ]);
+
+    expect(errors).toContain("ENTITY_BUCKET_KIND_CONFLICT:item: items vs objects in other");
+    expect(errors).toContain("ENTITY_BUCKET_NAME_CONFLICT:items: item vs region in third");
+    expect(errors).toContain(
+      "ENTITY_BUCKET_NON_CORE_NEW_KIND:third.region: non-core packs may only reuse core entity kinds in Slice 20B",
+    );
   });
 
   it("reports missing and misplaced expectedDelta descriptors", () => {
@@ -584,5 +638,28 @@ return { templates = {
     const lua = parseManifestLua(manifest);
 
     expect(diffManifestAlignment(ts, lua)).toEqual([]);
+  });
+
+  it("real enabled core + fixture registries align with their Lua manifests", async () => {
+    const enabledPacks = ["core", "pack_contract_fixture"];
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, enabledPacks);
+    const ts = buildRegistrySnapshot(registry);
+    const manifests = [];
+
+    for (const pack of enabledPacks) {
+      const manifest = await fs.readFile(
+        path.join(repoRoot, "reaper/packs", pack, "manifest.lua"),
+        "utf8",
+      );
+      manifests.push(parseManifestLuaFull(manifest));
+    }
+
+    expect(diffEntityBucketConflicts(manifests)).toEqual([]);
+    expect(
+      manifests.flatMap((manifest, index) =>
+        diffPackManifestAlignment(enabledPacks[index], ts, manifest),
+      ),
+    ).toEqual([]);
   });
 });

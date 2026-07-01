@@ -1,0 +1,13 @@
+id: fixture_pack_smoke
+description: Proves the pack-contract fixture pack can contribute a recipe.
+version: 0.1.0
+inputs:
+  track_id:
+    description: Track reference to rename.
+  name:
+    description: Replacement track name.
+steps:
+  - template: fixture_track_rename
+    params:
+      track_id: "{{ track_id }}"
+      name: "{{ name }}"

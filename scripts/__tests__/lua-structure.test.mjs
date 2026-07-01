@@ -84,6 +84,21 @@ describe("Lua bridge structure", () => {
     expect(helper).toMatch(/runtime fallback will use 'items'/);
   });
 
+  it("loads packs through the Slice 20B pack loader and forbids non-core entity-kind expansion", async () => {
+    const [bridge, loader] = await Promise.all([
+      readRepoFile("reaper/streetlight_bridge.lua"),
+      readRepoFile("reaper/packs/core/lib/pack_loader.lua"),
+    ]);
+
+    expect(bridge).toMatch(/packs\/core\/lib\/pack_loader\.lua/);
+    expect(bridge).toMatch(/packs\.parse_enabled_packs/);
+    expect(bridge).toMatch(/packs\.load_packs\(SCRIPT_DIR, ENABLED_PACKS/);
+    expect(loader).toMatch(/Enabled packs must start with core/);
+    expect(loader).toMatch(/declares new entity_kind/);
+    expect(loader).toMatch(/non-core packs may only reuse core entity kinds/);
+    expect(loader).toMatch(/Duplicate template name/);
+  });
+
   it("proves fake entity families need no dispatcher hard-code", async () => {
     const helper = await readRepoFile("reaper/packs/core/lib/entity_buckets.lua");
     expect(helper).toMatch(/function M\.build_entity_bucket_map\(manifest, opts\)/);

@@ -26,7 +26,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const TEMPLATES_SUBDIR = "packages/mcp-server/src/templates";
+const TEMPLATE_DIRS_BY_PACK = {
+  core: "packages/mcp-server/src/templates",
+  pack_contract_fixture: "packages/mcp-server/src/packs/pack-contract-fixture",
+};
+const TEMPLATES_SUBDIR = TEMPLATE_DIRS_BY_PACK.core;
 const TEMPLATE_HELPER_FILES = new Set(["_shared.ts", "index.ts"]);
 
 /**
@@ -129,27 +133,35 @@ export function lintDefinitions(definitions, templateFiles) {
  * List template basenames under `packages/mcp-server/src/templates/`,
  * excluding helper files (`_shared.ts`, `index.ts`) and any non-.ts file.
  */
-export async function readTemplateFilenames(repoRoot) {
-  const dir = path.join(repoRoot, TEMPLATES_SUBDIR);
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-    .map((entry) => entry.name)
-    .filter((name) => !TEMPLATE_HELPER_FILES.has(name))
-    .sort();
+export async function readTemplateFilenames(repoRoot, enabledPacks = ["core"]) {
+  const names = [];
+  for (const pack of enabledPacks) {
+    const rel = TEMPLATE_DIRS_BY_PACK[pack];
+    if (!rel) throw new Error(`Unknown pack id for template lint: ${pack}`);
+    const dir = path.join(repoRoot, rel);
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+      if (TEMPLATE_HELPER_FILES.has(entry.name)) continue;
+      names.push(entry.name);
+    }
+  }
+  return names.sort();
 }
 
 async function cmdCheck() {
   const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-  const [{ CapabilityRegistry }, { registerCoreTemplates }] = await Promise.all([
+  const [coreRegistry, corePacks, templates] = await Promise.all([
     import(pathToFileURL(path.join(repoRoot, "packages/core/dist/registry.js")).href),
+    import(pathToFileURL(path.join(repoRoot, "packages/core/dist/packs.js")).href),
     import(pathToFileURL(path.join(repoRoot, "packages/mcp-server/dist/templates/index.js")).href),
   ]);
 
-  const registry = new CapabilityRegistry();
-  registerCoreTemplates(registry);
+  const registry = new coreRegistry.CapabilityRegistry();
+  const enabledPacks = corePacks.parseEnabledPacks(process.env.STREETLIGHT_ENABLED_PACKS);
+  templates.registerEnabledTemplates(registry, enabledPacks);
   const definitions = registry.rawDefinitions();
-  const templateFiles = await readTemplateFilenames(repoRoot);
+  const templateFiles = await readTemplateFilenames(repoRoot, enabledPacks);
 
   const errors = lintDefinitions(definitions, templateFiles);
   if (errors.length > 0) {

@@ -2,7 +2,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CapabilityRegistry } from "@streetlight/core";
+import { CapabilityRegistry, parseEnabledPacks } from "@streetlight/core";
 import { FileQueueClient, resolveQueueDir } from "./transport/file-queue.js";
 import { ping } from "./tools/ping.js";
 import {
@@ -16,7 +16,7 @@ import {
 import { callTemplate } from "./tools/call-template.js";
 import { listTemplates } from "./tools/list-templates.js";
 import { listRecipes } from "./tools/list-recipes.js";
-import { registerCoreTemplates } from "./templates/index.js";
+import { registerEnabledTemplates } from "./templates/index.js";
 import { z } from "zod";
 
 async function main(): Promise<void> {
@@ -25,10 +25,11 @@ async function main(): Promise<void> {
   await client.init();
 
   const registry = new CapabilityRegistry();
-  registerCoreTemplates(registry);
+  const enabledPacks = parseEnabledPacks(process.env.STREETLIGHT_ENABLED_PACKS);
+  registerEnabledTemplates(registry, enabledPacks);
 
   process.stderr.write(
-    `[streetlight-mcp] queue=${queueDir}\n[streetlight-mcp] v0.1 kernel — ping + get_state + list_templates + list_recipes + call_template (${registry.size()} templates)\n`,
+    `[streetlight-mcp] queue=${queueDir}\n[streetlight-mcp] enabled_packs=${enabledPacks.join(",")}\n[streetlight-mcp] v0.1 kernel — ping + get_state + list_templates + list_recipes + call_template (${registry.size()} templates)\n`,
   );
 
   const server = new McpServer({

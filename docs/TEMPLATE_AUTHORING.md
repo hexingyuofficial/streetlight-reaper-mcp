@@ -41,8 +41,8 @@ down at the top of your slice plan or PR description:
 | Question | Why it matters |
 |---|---|
 | `name` (snake_case) | Goes on the wire, must be unique across the registry, must match the TS file slug. |
-| `entity_kind` (`item` / `track` / `region` / `render`, or new) | Routes `changed_ids` to the right `LAST_RESULT` bucket. New kinds need a manifest `entity_buckets` entry — see "Extending to a New entity_kind". |
-| `pack` (currently always `core`) | Tells `list_templates` consumers which capability bundle. New packs need their own dir under `reaper/packs/`. |
+| `entity_kind` (`item` / `track` / `region` / `render`, or new) | Routes `changed_ids` to the right `LAST_RESULT` bucket. Slice 20B allows non-core packs to reuse core kinds only; new kinds need a focused kernel slice before the domain pack ships — see "Extending to a New entity_kind". |
+| `pack` (`core` or an enabled domain pack) | Tells `list_templates` consumers which capability bundle owns the template. New domain packs need their own TS registration module plus `reaper/packs/<pack>/manifest.lua`; do not park domain capabilities in `core` just to avoid pack-loading work. |
 | `risk` (`read` / `write_safe` / `filesystem` / `destructive` / `unsafe_eval`) | v0.1's default policy allows `read`, `write_safe`, and `filesystem` (needed by `media_import` / `render_region`). `destructive` and `unsafe_eval` require explicit opt-in and are out of scope here. |
 | `mutates` (bool) | If true, the template can change project state. |
 | `undoable` (bool) | If true, the bridge wraps the handler in `undo.with_undo`. Must align with `undo_flags` and the `manifest.lua` entry. `render_region` is the only `mutates=true / undoable=false` case in v0.1 — see notes on it below. |
@@ -551,23 +551,46 @@ follow that slice's Architect packet shape.
 
 ## Extending To A New Pack
 
-`pack` in the `CapabilityDefinition` is currently always `"core"`. A
-second pack (e.g. `midi`, `fx`, `routing`, `automation`) needs:
+Slice 20B adds the first real pack contract foundation. `core` remains the
+default and is always required, but a repo-local domain pack can now be
+enabled explicitly through `STREETLIGHT_ENABLED_PACKS` on the MCP side and
+`_G.STREETLIGHT_ENABLED_PACKS` on the REAPER side.
 
-1. New directory `reaper/packs/<pack>/` with its own `manifest.lua`,
-   `templates/`, and any pack-local helpers.
-2. A bridge pack-loading slice. As of Slice 16,
-   `streetlight_bridge.lua` still loads the `core` pack explicitly; adding
-   pack discovery / multi-pack loading is a separate runtime change, not
-   something the current authoring lint enables by itself.
-3. New entry in `registerCoreTemplates`-equivalent on the TS side, or
-   factor `registerCoreTemplates` into `register<Pack>Templates(...)`
-   and call all of them from the MCP server bootstrap.
-4. Pack-local error codes: prefer extending `errors.ts` (one shared
-   contract) over per-pack code namespaces. Coordinate with whoever owns
-   the kernel before fragmenting the error surface.
+Minimum v1 pack shape:
 
-Again, this is a planned slice, not a drive-by addition.
+1. Pick a pack id matching `^[a-z][a-z0-9_]*$`.
+2. Add `packages/mcp-server/src/packs/<pack>/` with a pack-local
+   registration function.
+3. Enabled pack order must start with `core`:
+   `core,<pack>[,<pack2>...]`.
+4. Add `reaper/packs/<pack>/manifest.lua`, `templates/`, optional
+   `recipes/`, and optional `docs/packs/<pack>/`.
+5. Register the pack in `registerEnabledTemplates(...)`.
+6. Keep template names globally unique across all enabled packs.
+7. Recipe raw ids must be lower_snake_case and must not contain `:`.
+   Keep recipe ids pack-qualified in user-facing metadata:
+   `qualified_id = "<pack>:<id>"`.
+8. In Slice 20B, non-core packs may not introduce new `entity_kind`
+   buckets. Reusing `item`, `track`, `region`, or `render` should reuse
+   the core bucket and must not redeclare a conflicting bucket name.
+   New entity families need a separate kernel slice first.
+9. Run static gates with the pack explicitly enabled:
+
+```bash
+STREETLIGHT_ENABLED_PACKS=core,<pack> npm run check:manifest
+STREETLIGHT_ENABLED_PACKS=core,<pack> npm run check:template-authoring
+```
+
+For a live REAPER smoke, set this before loading the bridge:
+
+```lua
+_G.STREETLIGHT_ENABLED_PACKS = "core,<pack>"
+```
+
+Do not use `core` as a parking lot for cleanup, loop, MIDI, routing, FX,
+automation, or unsafe capabilities. If a domain capability needs a pack,
+create the pack boundary first or add an explicit expiry slice and
+migration checklist in the slice plan.
 
 ## Forward-Looking Capability Packs (v0.2+)
 

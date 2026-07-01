@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { listRecipes } from "../list-recipes.js";
+import { listRecipes, resolveRecipeRoots } from "../list-recipes.js";
 
 const ORIG_ENV = process.env.STREETLIGHT_RECIPES_DIR;
 
@@ -25,6 +25,9 @@ describe("listRecipes", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.result.recipes_dir).toBe(path.resolve(recipesDir));
+    expect(result.result.recipe_roots).toEqual([
+      { pack: "core", recipes_dir: path.resolve(recipesDir) },
+    ]);
   });
 
   it("empty dir → ok with empty recipes and no warnings", async () => {
@@ -42,6 +45,7 @@ describe("listRecipes", () => {
     if (!result.ok) return;
     expect(result.result.recipes).toEqual([]);
     expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.pack).toBe("core");
     expect(result.result.warnings[0]?.error).toMatch(/not found/i);
   });
 
@@ -66,6 +70,8 @@ describe("listRecipes", () => {
     expect(result.result.recipes).toHaveLength(1);
     const r = result.result.recipes[0];
     expect(r?.id).toBe("demo");
+    expect(r?.pack).toBe("core");
+    expect(r?.qualified_id).toBe("core:demo");
     expect(r?.description).toBe("A demo recipe");
     expect(r?.version).toBe(1);
     expect(Array.isArray(r?.steps)).toBe(true);
@@ -108,6 +114,7 @@ describe("listRecipes", () => {
     expect(result.result.recipes).toHaveLength(1);
     expect(result.result.recipes[0]?.id).toBe("good");
     expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.pack).toBe("core");
     expect(result.result.warnings[0]?.file).toBe("broken.yaml");
     expect(result.result.warnings[0]?.error).toMatch(/YAML parse/);
   });
@@ -122,7 +129,41 @@ describe("listRecipes", () => {
     if (!result.ok) return;
     expect(result.result.recipes).toEqual([]);
     expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.pack).toBe("core");
     expect(result.result.warnings[0]?.error).toMatch(/schema validation failed/);
+  });
+
+  it("recipe ids cannot contain colons because qualified_id owns the colon", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "bad-id.yaml"),
+      "id: core:bad\ndescription: ambiguous id\n",
+    );
+    const result = await listRecipes();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.error).toMatch(/without ':'/);
+  });
+
+  it("skips duplicate qualified ids within the same pack", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "a.yaml"),
+      "id: duplicate\ndescription: first\n",
+    );
+    await fs.writeFile(
+      path.join(recipesDir, "b.yaml"),
+      "id: duplicate\ndescription: second\n",
+    );
+    const result = await listRecipes();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toHaveLength(1);
+    expect(result.result.recipes[0]?.description).toBe("first");
+    expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.error).toMatch(
+      /duplicate recipe qualified_id core:duplicate/,
+    );
   });
 
   it("non-yaml files are ignored", async () => {
@@ -167,5 +208,35 @@ describe("listRecipes", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.result.recipes.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("resolveRecipeRoots maps enabled packs to deterministic recipe roots", () => {
+    delete process.env.STREETLIGHT_RECIPES_DIR;
+    const roots = resolveRecipeRoots(["core", "pack_contract_fixture"]);
+    expect(roots.map((r) => r.pack)).toEqual([
+      "core",
+      "pack_contract_fixture",
+    ]);
+    expect(roots[0]?.recipes_dir).toMatch(/\/recipes$/);
+    expect(roots[1]?.recipes_dir).toMatch(
+      /\/reaper\/packs\/pack_contract_fixture\/recipes$/,
+    );
+  });
+
+  it("loads fixture-pack recipes with pack ownership and qualified ids", async () => {
+    delete process.env.STREETLIGHT_RECIPES_DIR;
+    const result = await listRecipes(["core", "pack_contract_fixture"]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const fixture = result.result.recipes.find(
+      (recipe) => recipe.qualified_id === "pack_contract_fixture:fixture_pack_smoke",
+    );
+    expect(fixture?.pack).toBe("pack_contract_fixture");
+    expect(fixture?.id).toBe("fixture_pack_smoke");
+    expect(result.result.recipe_roots.map((root) => root.pack)).toEqual([
+      "core",
+      "pack_contract_fixture",
+    ]);
   });
 });

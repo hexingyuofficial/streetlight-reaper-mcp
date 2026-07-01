@@ -11,8 +11,60 @@ first.
 
 ## Current Status
 
+**Slice 20B ✅ live-smoked / static-green / commit-ready
+(2026-07-01).** Source:
+`docs/plans/SLICE_20B_PACK_CONTRACT_ARCHITECT_PLAN.md`. This is Phase
+0.5 Pack Contract Foundation from the first-real-version plan: keep
+future cleanup / loop / MIDI / routing / FX / unsafe domains out of
+`core` by landing the minimal repo-local pack contract before those
+domains begin. Current implementation adds `packages/core/src/packs.ts`
+(`parseEnabledPacks`, pack-id validation, default core, duplicate
+rejection, require core), `registerEnabledTemplates(...)`,
+fixture-pack TS registration, pack-aware MCP startup logging,
+pack-aware `list_recipes` (`recipe_roots[]`, `pack`, `qualified_id`),
+pack-aware `check:manifest` and `check:template-authoring`, Lua
+`reaper/packs/core/lib/pack_loader.lua`, bridge multi-pack loading, and
+a test-only `pack_contract_fixture` on both TS and Lua sides. Default
+behavior remains core-only: 12 templates and no fixture exposure.
+Fixture verification uses
+`STREETLIGHT_ENABLED_PACKS=core,pack_contract_fixture` on the MCP/static
+side and `_G.STREETLIGHT_ENABLED_PACKS =
+"core,pack_contract_fixture"` before loading the REAPER bridge. Static
+gates already run by Codex are green after reviewer follow-up:
+`npm test` **376/376**,
+`npm run build` clean, `npm run check:error-codes-fresh` 22 codes fresh,
+default `npm run check:manifest` → 12 templates across 1 pack,
+fixture-enabled `check:manifest` → 13 templates across 2 packs, default
+`npm run check:template-authoring` → 12 templates,
+fixture-enabled `check:template-authoring` → 13 templates, and
+`git diff --check` clean. Reviewer Feynman found two contract gaps and
+both are fixed: non-core packs cannot introduce new entity kinds in this
+slice, and recipe ids cannot contain `:` or collide into duplicate
+`qualified_id`s. Smoke agent Banach found no static blockers and supplied
+the REAPER fixture smoke recipe. Live smoke then passed on REAPER
+`7.71/macOS-arm64` after the user loaded the bridge with
+`_G.STREETLIGHT_ENABLED_PACKS = "core,pack_contract_fixture"`. Console
+showed `loaded pack 'core' v0.1.0 (12 templates)`, `loaded pack
+'pack_contract_fixture' v0.1.0 (1 templates)`, and ready line with
+`fixture_track_rename`. Smoke stamp `1782881931841`; track GUID
+`guid:{76CC9D4E-3F98-CE4E-B02A-A34C0F03D870}`. `ping` connected;
+fixture-enabled `list_templates` returned 13 templates with
+`track_color.pack === "core"` and `fixture_track_rename.pack ===
+"pack_contract_fixture"`; fixture-enabled `list_recipes` returned
+`core:impact_variations` and
+`pack_contract_fixture:fixture_pack_smoke` with zero warnings.
+`track_create`, core `track_color`, fixture `fixture_track_rename`, and
+core `track_rename` all returned the same track GUID through
+`last_result:track:0`, proving cross-pack `LAST_RESULT.tracks` routing.
+Missing fixture track returned typed `TRACK_NOT_FOUND`; default core-only
+registry returned 12 templates, fixture absent, and
+`TEMPLATE_NOT_FOUND` before queue write; queue cleanup ended
+`pending=0`, `running=0`, `done=0`. Remaining action: local commit only
+when the user explicitly asks; no push unless explicitly requested.
+
 **Kernel hardening Slice 19 ✅ live-smoked / static-green /
-uncommitted (2026-07-01).** Architect packet came from the current
+committed and pushed at `e54fd9c` (2026-07-01), with docs sync at
+`7bbd426`.** Architect packet came from the current
 conversation; source master plans remain
 `docs/plans/KERNEL_HARDENING_PLAN.md` and
 `docs/plans/KERNEL_HARDENING_EXECUTION.md`. Slice 19 is the **H6
@@ -40,9 +92,16 @@ the smoke track, `track_color` verified `#2D9CDB`, `#000000`, and
 track returned typed `TRACK_NOT_FOUND`, and queue cleanup ended
 `pending=0`, `running=0`, `done=0`. H6's basic loop is now closed:
 authoring guide -> lint -> `defineTemplate` -> dry-run scaffolder ->
-real template -> static gates -> live REAPER smoke. Local commit policy
-unchanged: do not push during the work-hours window unless the user
-explicitly makes an exception.
+real template -> static gates -> live REAPER smoke. Post-H6 execution is
+now governed by
+`docs/plans/OPENREAPER_FIRST_REAL_VERSION_EXECUTION_PLAN.md`; future
+Slice 20+ architect packets should derive scope and verification from
+that file. Rolling workflow for Slice 20+: Architect owns large plans;
+Codex implements approved packets; Codex pulls reviewer and smoke
+subagents; the user handles key decisions and final acceptance; docs move
+with every slice so context resets can resume cleanly; local commits
+happen only on explicit user ask; pushes happen only on explicit push
+ask.
 
 **Kernel hardening Slice 18 ✅ committed/pushed at `88b0edf`
 (2026-06-30).** Architect packet lives at
@@ -2178,10 +2237,12 @@ for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Next planning packet.** The current kernel-hardening H6 thread has
-   reached its documented closure point. Further factory automation
-   (write-mode scaffolder, batch template generation, FX/MIDI/routing
-   packs) should come from the next larger architect plan.
+1. **Slice 20+ rolling workflow.** The current kernel-hardening H6
+   thread has reached its documented closure point. Use
+   `docs/plans/OPENREAPER_FIRST_REAL_VERSION_EXECUTION_PLAN.md` and the
+   latest slice packet. Architect plans; Codex executes; Codex pulls
+   reviewer/smoke; docs move with the slice; local commit only on
+   explicit ask; push only on explicit push ask.
 2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.

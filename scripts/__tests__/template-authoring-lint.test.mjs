@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { CapabilityRegistry } from "../../packages/core/src/registry.ts";
-import { registerCoreTemplates } from "../../packages/mcp-server/src/templates/index.ts";
+import {
+  registerCoreTemplates,
+  registerEnabledTemplates,
+} from "../../packages/mcp-server/src/templates/index.ts";
 import {
   findExampleSchemaMismatches,
   findSlugMismatches,
   formatZodIssues,
   lintDefinitions,
+  readTemplateFilenames,
   templateSlug,
 } from "../template-authoring-lint.mjs";
 
@@ -44,6 +50,9 @@ const ItemPitchLikeParams = z
     semitones: z.number().finite().min(-24).max(24),
   })
   .strict();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "../..");
 
 describe("template authoring lint — pure helpers", () => {
   it("converts snake_case names to kebab-case file slugs", () => {
@@ -190,5 +199,20 @@ describe("template authoring lint — real registry", () => {
     const defs = registry.rawDefinitions();
     const expectedFiles = defs.map((d) => `${templateSlug(d.name)}.ts`).sort();
     expect(findSlugMismatches(defs, expectedFiles)).toEqual([]);
+  });
+
+  it("checks fixture pack examples and slugs when the pack is enabled", async () => {
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, ["core", "pack_contract_fixture"]);
+    const defs = registry.rawDefinitions();
+    const templateFiles = await readTemplateFilenames(repoRoot, [
+      "core",
+      "pack_contract_fixture",
+    ]);
+
+    expect(defs.some((def) => def.name === "fixture_track_rename")).toBe(true);
+    expect(templateFiles).toContain("fixture-track-rename.ts");
+    expect(findExampleSchemaMismatches(defs)).toEqual([]);
+    expect(findSlugMismatches(defs, templateFiles)).toEqual([]);
   });
 });

@@ -24,10 +24,11 @@ end)()
 local json     = dofile(SCRIPT_DIR .. "packs/core/lib/json.lua")
 local ERRS     = dofile(SCRIPT_DIR .. "packs/core/error_codes.lua")
 local buckets  = dofile(SCRIPT_DIR .. "packs/core/lib/entity_buckets.lua")
+local packs    = dofile(SCRIPT_DIR .. "packs/core/lib/pack_loader.lua")
 local refs     = dofile(SCRIPT_DIR .. "packs/core/refs.lua")
 local undo     = dofile(SCRIPT_DIR .. "packs/core/undo.lua")
 local verify   = dofile(SCRIPT_DIR .. "packs/core/verify.lua")
-local MANIFEST = dofile(SCRIPT_DIR .. "packs/core/manifest.lua")
+local MANIFEST = nil
 
 local EXPECTED_ERROR_CODE_COUNT = 22
 
@@ -113,8 +114,12 @@ local MY_GENERATION = _G.STREETLIGHT_BRIDGE_GENERATION
 
 log("bridge starting (generation " .. MY_GENERATION .. ")")
 log("queue dir = " .. QUEUE_DIR)
-log("loaded pack '" .. MANIFEST.name .. "' v" .. MANIFEST.version)
 log("loaded error_codes (" .. EXPECTED_ERROR_CODE_COUNT .. " codes)")
+
+local ENABLED_PACKS = packs.parse_enabled_packs(
+  _G.STREETLIGHT_ENABLED_PACKS or os.getenv("STREETLIGHT_ENABLED_PACKS")
+)
+MANIFEST = packs.load_packs(SCRIPT_DIR, ENABLED_PACKS, { log = log })
 
 -- ─── Per-session state ──────────────────────────────────────────────────────
 
@@ -943,7 +948,7 @@ function DISPATCH.template(cmd)
       ok = false,
       error = {
         code        = ERRS.TEMPLATE_NOT_FOUND,
-        message     = "No template named '" .. name .. "' in pack '" .. MANIFEST.name .. "'",
+        message     = "No template named '" .. name .. "' in enabled packs '" .. MANIFEST.name .. "'",
         recoverable = true,
       },
     }

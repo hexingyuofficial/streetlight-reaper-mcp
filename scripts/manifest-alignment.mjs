@@ -102,10 +102,39 @@ export function parseManifestLua(text) {
   return found;
 }
 
+function parseLuaStringField(text, field) {
+  const re = new RegExp(`${field}\\s*=\\s*"([^"]+)"\\s*,`);
+  const match = stripLuaLineComments(text).match(re);
+  return match ? match[1] : undefined;
+}
+
+export function parseManifestEntityBuckets(text) {
+  text = stripLuaLineComments(text);
+  const start = text.indexOf("entity_buckets = {");
+  if (start === -1) return new Map();
+
+  const block = parseTemplateBlock(text, "entity_buckets", start);
+  const buckets = new Map();
+  for (const match of block.matchAll(/([A-Za-z0-9_]+)\s*=\s*"([^"]+)"\s*,?/g)) {
+    buckets.set(match[1], match[2]);
+  }
+  return buckets;
+}
+
+export function parseManifestLuaFull(text) {
+  return {
+    name: parseLuaStringField(text, "name"),
+    version: parseLuaStringField(text, "version"),
+    entity_buckets: parseManifestEntityBuckets(text),
+    templates: parseManifestLua(text),
+  };
+}
+
 export function buildRegistrySnapshot(registry) {
   const snapshot = new Map();
   for (const def of registry.rawDefinitions()) {
     const entry = {
+      pack: def.pack,
       mutates: def.mutates,
       undoable: def.undoable,
       undo_flags: sorted(def.undo_flags),
@@ -271,36 +300,124 @@ export function diffManifestAlignment(tsSnapshot, luaSnapshot) {
   return errors;
 }
 
+export function filterRegistrySnapshotByPack(tsSnapshot, pack) {
+  const filtered = new Map();
+  for (const [name, entry] of tsSnapshot.entries()) {
+    if (entry.pack === pack) filtered.set(name, entry);
+  }
+  return filtered;
+}
+
+export function diffPackManifestAlignment(pack, tsSnapshot, manifest) {
+  const errors = [];
+  if (manifest.name !== pack) {
+    errors.push(
+      `PACK_NAME_MISMATCH:${pack}: lua=${JSON.stringify(manifest.name)}`,
+    );
+  }
+  if (typeof manifest.version !== "string" || manifest.version.length === 0) {
+    errors.push(`PACK_VERSION_MISSING:${pack}`);
+  }
+  errors.push(
+    ...diffManifestAlignment(
+      filterRegistrySnapshotByPack(tsSnapshot, pack),
+      manifest.templates,
+    ),
+  );
+  return errors;
+}
+
+export function diffEntityBucketConflicts(manifests) {
+  const errors = [];
+  const byKind = new Map();
+  const byBucket = new Map();
+  let coreSeen = false;
+
+  for (const manifest of manifests) {
+    const pack = manifest.name || "<unknown>";
+    if (pack === "core") coreSeen = true;
+    for (const [kind, bucket] of manifest.entity_buckets.entries()) {
+      const previousBucket = byKind.get(kind);
+      if (pack !== "core" && previousBucket === undefined) {
+        errors.push(
+          `ENTITY_BUCKET_NON_CORE_NEW_KIND:${pack}.${kind}: non-core packs may only reuse core entity kinds in Slice 20B`,
+        );
+      }
+      if (previousBucket !== undefined && previousBucket !== bucket) {
+        errors.push(
+          `ENTITY_BUCKET_KIND_CONFLICT:${kind}: ${previousBucket} vs ${bucket} in ${pack}`,
+        );
+      }
+      byKind.set(kind, bucket);
+
+      const previousKind = byBucket.get(bucket);
+      if (previousKind !== undefined && previousKind !== kind) {
+        errors.push(
+          `ENTITY_BUCKET_NAME_CONFLICT:${bucket}: ${previousKind} vs ${kind} in ${pack}`,
+        );
+      }
+      byBucket.set(bucket, kind);
+    }
+  }
+
+  if (!coreSeen) {
+    errors.push("ENTITY_BUCKET_CORE_MISSING: enabled packs must include core first");
+  }
+
+  return errors;
+}
+
 export async function buildRealRegistrySnapshot({
   CapabilityRegistry,
-  registerCoreTemplates,
+  registerEnabledTemplates,
+  enabledPacks,
 }) {
   const registry = new CapabilityRegistry();
-  registerCoreTemplates(registry);
+  registerEnabledTemplates(registry, enabledPacks);
   return buildRegistrySnapshot(registry);
 }
 
 async function main() {
   const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-  const [{ CapabilityRegistry }, { registerCoreTemplates }] = await Promise.all([
+  const [
+    { CapabilityRegistry },
+    { parseEnabledPacks },
+    { registerEnabledTemplates },
+  ] = await Promise.all([
     import(pathToFileURL(path.join(repoRoot, "packages/core/dist/registry.js")).href),
+    import(pathToFileURL(path.join(repoRoot, "packages/core/dist/packs.js")).href),
     import(pathToFileURL(path.join(repoRoot, "packages/mcp-server/dist/templates/index.js")).href),
   ]);
-  const manifestPath = path.join(repoRoot, "reaper/packs/core/manifest.lua");
-  const manifestText = await fs.readFile(manifestPath, "utf8");
-  const luaSnapshot = parseManifestLua(manifestText);
+  const enabledPacks = parseEnabledPacks(process.env.STREETLIGHT_ENABLED_PACKS);
   const tsSnapshot = await buildRealRegistrySnapshot({
     CapabilityRegistry,
-    registerCoreTemplates,
+    registerEnabledTemplates,
+    enabledPacks,
   });
-  const errors = diffManifestAlignment(tsSnapshot, luaSnapshot);
+
+  const manifests = [];
+  for (const pack of enabledPacks) {
+    const manifestPath = path.join(repoRoot, "reaper/packs", pack, "manifest.lua");
+    const manifestText = await fs.readFile(manifestPath, "utf8");
+    const manifest = parseManifestLuaFull(manifestText);
+    manifests.push(manifest);
+  }
+
+  const errors = [
+    ...diffEntityBucketConflicts(manifests),
+    ...manifests.flatMap((manifest, index) =>
+      diffPackManifestAlignment(enabledPacks[index], tsSnapshot, manifest),
+    ),
+  ];
 
   if (errors.length > 0) {
     process.stderr.write(`Streetlight manifest alignment failed:\n`);
     for (const error of errors) process.stderr.write(`- ${error}\n`);
     process.exit(1);
   }
-  process.stdout.write(`Streetlight manifest alignment ok (${tsSnapshot.size} templates).\n`);
+  process.stdout.write(
+    `Streetlight manifest alignment ok (${tsSnapshot.size} templates across ${enabledPacks.length} pack(s)).\n`,
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
