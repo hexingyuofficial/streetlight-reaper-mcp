@@ -3,9 +3,26 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { z } from "zod";
-import { parseEnabledPacks, type Result, ok } from "@streetlight/core";
+import {
+  CapabilityRegistry,
+  PACK_ID_PATTERN,
+  parseEnabledPacks,
+  type Result,
+  ok,
+} from "@streetlight/core";
+import { registerEnabledTemplates } from "../templates/index.js";
 
 const RECIPE_ID_PATTERN = /^[a-z][a-z0-9_]*$/;
+const RECIPE_CONTRACT_VERSION = 1;
+const RECIPE_EXECUTION_MODEL = "agent_step";
+const KNOWN_READ_SCOPES = [
+  "project",
+  "tracks",
+  "selection",
+  "regions",
+  "artifact",
+  "render",
+] as const;
 
 /**
  * Envelope-only Zod schema per Step 7 decision A5: validate the top-level
@@ -30,11 +47,61 @@ const RecipeEnvelopeSchema = z
   })
   .passthrough();
 
+const RecipeContractPointSchema = z
+  .object({
+    id: z.string().min(1),
+    description: z.string().min(1),
+  })
+  .passthrough();
+
+const RecipeContractProducesSchema = z
+  .object({
+    type: z.string().min(1),
+    schema: z.string().min(1).optional(),
+    read_scope: z.literal("artifact").optional(),
+    ref_prefix: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+const RecipeContractFixtureSmokeSchema = z
+  .object({
+    description: z.string().min(1),
+    steps: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
+/**
+ * Slice 29 contract v1 is metadata-only. It validates recipe discoverability
+ * and references, but does not validate Jinja placeholders, template params,
+ * or execute anything.
+ */
+const RecipeContractV1Schema = z
+  .object({
+    contract_version: z.literal(RECIPE_CONTRACT_VERSION),
+    execution_model: z.literal(RECIPE_EXECUTION_MODEL),
+    required_packs: z.array(
+      z
+        .string()
+        .min(1)
+        .regex(PACK_ID_PATTERN, "pack id must be lower_snake_case"),
+    ),
+    required_templates: z.array(z.string().min(1)),
+    required_read_scopes: z.array(z.enum(KNOWN_READ_SCOPES)),
+    required_artifact_schemas: z.array(z.string().min(1)),
+    produces: z.array(RecipeContractProducesSchema),
+    approval_points: z.array(RecipeContractPointSchema),
+    assertions: z.array(RecipeContractPointSchema),
+    fixture_smoke: RecipeContractFixtureSmokeSchema,
+  })
+  .passthrough();
+
 export type RecipeMetadata = z.infer<typeof RecipeEnvelopeSchema> & {
   pack: string;
   qualified_id: string;
 };
 type RecipeEnvelope = z.infer<typeof RecipeEnvelopeSchema>;
+type RecipeContractV1 = z.infer<typeof RecipeContractV1Schema>;
 
 export interface RecipeWarning {
   pack: string;
@@ -53,6 +120,12 @@ export interface ListRecipesResult {
   recipes_dir: string;
   recipe_roots: RecipeRoot[];
   warnings: RecipeWarning[];
+}
+
+interface RecipeContractValidationContext {
+  enabledPacks: Set<string>;
+  templateNames: Set<string>;
+  artifactSchemas: Set<string>;
 }
 
 /**
@@ -156,6 +229,92 @@ async function loadOneRecipe(
   return { ok: true, recipe: result.data };
 }
 
+function formatZodIssues(error: z.ZodError): string {
+  return error.issues
+    .map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`)
+    .join("; ");
+}
+
+function buildContractValidationContext(
+  enabledPacks: string[],
+): RecipeContractValidationContext {
+  const registry = new CapabilityRegistry();
+  registerEnabledTemplates(registry, enabledPacks);
+  const definitions = registry.rawDefinitions();
+  return {
+    enabledPacks: new Set(enabledPacks),
+    templateNames: new Set(definitions.map((definition) => definition.name)),
+    artifactSchemas: new Set(
+      definitions
+        .map((definition) => definition.artifact?.schema)
+        .filter((schema): schema is string => typeof schema === "string"),
+    ),
+  };
+}
+
+function validateContractReferences(
+  recipe: RecipeContractV1,
+  context: RecipeContractValidationContext,
+): string[] {
+  const errors: string[] = [];
+
+  for (const pack of recipe.required_packs) {
+    if (!context.enabledPacks.has(pack)) {
+      errors.push(`required pack "${pack}" is not enabled`);
+    }
+  }
+
+  for (const template of recipe.required_templates) {
+    if (!context.templateNames.has(template)) {
+      errors.push(`required template "${template}" is not registered`);
+    }
+  }
+
+  for (const schema of recipe.required_artifact_schemas) {
+    if (!context.artifactSchemas.has(schema)) {
+      errors.push(`required artifact schema "${schema}" is not registered`);
+    }
+  }
+
+  for (const [i, produced] of recipe.produces.entries()) {
+    if (
+      produced.schema !== undefined &&
+      !context.artifactSchemas.has(produced.schema)
+    ) {
+      errors.push(
+        `produces.${i}.schema "${produced.schema}" is not registered`,
+      );
+    }
+  }
+
+  return errors;
+}
+
+function validateRecipeContract(
+  recipe: RecipeEnvelope,
+  context: RecipeContractValidationContext,
+): string | null {
+  const raw = recipe as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(raw, "contract_version")) {
+    return null;
+  }
+  if (raw["contract_version"] !== RECIPE_CONTRACT_VERSION) {
+    return `unsupported recipe contract_version ${String(raw["contract_version"])}`;
+  }
+
+  const parsed = RecipeContractV1Schema.safeParse(recipe);
+  if (!parsed.success) {
+    return `contract v1 validation failed: ${formatZodIssues(parsed.error)}`;
+  }
+
+  const referenceErrors = validateContractReferences(parsed.data, context);
+  if (referenceErrors.length > 0) {
+    return `contract v1 reference validation failed: ${referenceErrors.join("; ")}`;
+  }
+
+  return null;
+}
+
 /**
  * Step 7 MVP tool. Re-reads every call per decision A3 — no caching.
  * Per A4: bad files emit a stderr warning AND surface in result.warnings;
@@ -167,6 +326,7 @@ export async function listRecipes(
 ): Promise<Result<ListRecipesResult>> {
   const recipeRoots = resolveRecipeRoots(enabledPacks);
   const recipesDir = recipeRoots[0]?.recipes_dir ?? resolveRecipesDir();
+  const contractContext = buildContractValidationContext(enabledPacks);
   const warnings: RecipeWarning[] = [];
   const recipes: RecipeMetadata[] = [];
   const seenQualifiedIds = new Set<string>();
@@ -198,6 +358,22 @@ export async function listRecipes(
       const full = path.join(root.recipes_dir, name);
       const loaded = await loadOneRecipe(full);
       if (loaded.ok) {
+        const contractError = validateRecipeContract(
+          loaded.recipe,
+          contractContext,
+        );
+        if (contractError !== null) {
+          const warning: RecipeWarning = {
+            pack: root.pack,
+            file: name,
+            error: contractError,
+          };
+          warnings.push(warning);
+          process.stderr.write(
+            `[streetlight-mcp] list_recipes: skipping ${root.pack}/${name} — ${warning.error}\n`,
+          );
+          continue;
+        }
         const qualifiedId = `${root.pack}:${loaded.recipe.id}`;
         if (seenQualifiedIds.has(qualifiedId)) {
           const warning: RecipeWarning = {

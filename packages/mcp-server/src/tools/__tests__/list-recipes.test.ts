@@ -6,6 +6,50 @@ import { listRecipes, resolveRecipeRoots } from "../list-recipes.js";
 
 const ORIG_ENV = process.env.STREETLIGHT_RECIPES_DIR;
 
+function yamlList(key: string, values: string[]): string[] {
+  if (values.length === 0) return [`${key}: []`];
+  return [`${key}:`, ...values.map((value) => `  - ${value}`)];
+}
+
+function validContractV1(
+  options: {
+    requiredPacks?: string[];
+    requiredTemplates?: string[];
+    requiredReadScopes?: string[];
+    requiredArtifactSchemas?: string[];
+    produces?: string[];
+  } = {},
+): string {
+  const requiredPacks = options.requiredPacks ?? ["core"];
+  const requiredTemplates = options.requiredTemplates ?? ["item_pitch"];
+  const requiredReadScopes = options.requiredReadScopes ?? ["selection"];
+  const requiredArtifactSchemas = options.requiredArtifactSchemas ?? [];
+  const produces = options.produces ?? ["produces: []"];
+
+  return [
+    "id: contract_demo",
+    "description: contract v1 demo",
+    "version: 0.1.0",
+    "contract_version: 1",
+    'execution_model: "agent_step"',
+    ...yamlList("required_packs", requiredPacks),
+    ...yamlList("required_templates", requiredTemplates),
+    ...yamlList("required_read_scopes", requiredReadScopes),
+    ...yamlList("required_artifact_schemas", requiredArtifactSchemas),
+    ...produces,
+    "approval_points:",
+    "  - id: selected_item",
+    "    description: Confirm one selected item.",
+    "assertions:",
+    "  - id: locked_envelope",
+    "    description: The call returns the locked envelope.",
+    "fixture_smoke:",
+    "  description: Static-only fixture for recipe contract v1.",
+    "  steps:",
+    "    - tool: list_templates",
+  ].join("\n");
+}
+
 describe("listRecipes", () => {
   let recipesDir: string;
 
@@ -97,6 +141,191 @@ describe("listRecipes", () => {
     const r = result.result.recipes[0] as Record<string, unknown>;
     expect(r["variations"]).toEqual([{ name: "v1", pitch: -3 }]);
     expect(r["custom_field"]).toEqual({ foo: "bar" });
+  });
+
+  it("contract_version:1 recipes expose strict contract metadata", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "contract.yaml"),
+      validContractV1(),
+    );
+
+    const result = await listRecipes();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.warnings).toEqual([]);
+    expect(result.result.recipes).toHaveLength(1);
+    const recipe = result.result.recipes[0] as Record<string, unknown>;
+    expect(recipe["contract_version"]).toBe(1);
+    expect(recipe["execution_model"]).toBe("agent_step");
+    expect(recipe["required_packs"]).toEqual(["core"]);
+    expect(recipe["required_templates"]).toEqual(["item_pitch"]);
+    expect(recipe["required_read_scopes"]).toEqual(["selection"]);
+    expect(recipe["required_artifact_schemas"]).toEqual([]);
+    expect(recipe["qualified_id"]).toBe("core:contract_demo");
+  });
+
+  it("invalid contract_version:1 recipe is skipped with warnings while ok stays true", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "bad-contract.yaml"),
+      [
+        "id: bad_contract",
+        "description: missing contract fields",
+        "contract_version: 1",
+      ].join("\n"),
+    );
+    await fs.writeFile(
+      path.join(recipesDir, "legacy.yaml"),
+      "id: legacy\ndescription: legacy still loads\n",
+    );
+
+    const result = await listRecipes();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes.map((recipe) => recipe.id)).toEqual(["legacy"]);
+    expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.file).toBe("bad-contract.yaml");
+    expect(result.result.warnings[0]?.error).toMatch(
+      /contract v1 validation failed/,
+    );
+    expect(result.result.warnings[0]?.error).toMatch(/execution_model/);
+  });
+
+  it("unsupported recipe contract versions are skipped with warnings", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "future.yaml"),
+      [
+        "id: future",
+        "description: future contract",
+        "contract_version: 2",
+      ].join("\n"),
+    );
+
+    const result = await listRecipes();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.error).toMatch(
+      /unsupported recipe contract_version 2/,
+    );
+  });
+
+  it("contract v1 rejects scope:analysis and keeps artifact as the read scope", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "analysis-scope.yaml"),
+      validContractV1({ requiredReadScopes: ["analysis"] }),
+    );
+
+    const result = await listRecipes();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.error).toMatch(
+      /required_read_scopes\.0/,
+    );
+  });
+
+  it("contract v1 requires produced artifacts to use read_scope: artifact", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "bad-produced-scope.yaml"),
+      validContractV1({
+        produces: [
+          "produces:",
+          "  - type: artifact",
+          "    read_scope: selection",
+        ],
+      }),
+    );
+
+    const result = await listRecipes();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings).toHaveLength(1);
+    expect(result.result.warnings[0]?.error).toMatch(/produces\.0\.read_scope/);
+    expect(result.result.warnings[0]?.error).toMatch(/artifact/);
+  });
+
+  it("keeps the real impact_variations recipe in legacy passthrough mode", async () => {
+    delete process.env.STREETLIGHT_RECIPES_DIR;
+
+    const result = await listRecipes(["core"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const impact = result.result.recipes.find(
+      (recipe) => recipe.qualified_id === "core:impact_variations",
+    ) as Record<string, unknown> | undefined;
+    expect(impact?.pack).toBe("core");
+    expect(impact).not.toHaveProperty("contract_version");
+    expect(impact).toHaveProperty("variations");
+    expect(
+      result.result.warnings.filter((warning) => warning.pack === "core"),
+    ).toEqual([]);
+  });
+
+  it("contract v1 validates required templates against enabled packs", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "missing-template.yaml"),
+      validContractV1({ requiredTemplates: ["item_audio_analyze"] }),
+    );
+
+    const result = await listRecipes(["core"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings[0]?.error).toMatch(
+      /required template "item_audio_analyze" is not registered/,
+    );
+  });
+
+  it("contract v1 validates required artifact schemas against enabled packs", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "missing-schema.yaml"),
+      validContractV1({
+        requiredArtifactSchemas: ["openreaper.analysis.item_audio.v1"],
+        produces: [
+          "produces:",
+          "  - type: artifact",
+          "    schema: openreaper.analysis.item_audio.v1",
+          "    read_scope: artifact",
+          '    ref_prefix: "artifact:analysis:analysis:"',
+        ],
+      }),
+    );
+
+    const result = await listRecipes(["core"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings[0]?.error).toMatch(
+      /required artifact schema "openreaper\.analysis\.item_audio\.v1" is not registered/,
+    );
+    expect(result.result.warnings[0]?.error).toMatch(/produces\.0\.schema/);
+  });
+
+  it("contract v1 validates required packs against enabled packs", async () => {
+    await fs.writeFile(
+      path.join(recipesDir, "missing-pack.yaml"),
+      validContractV1({ requiredPacks: ["core", "analysis"] }),
+    );
+
+    const result = await listRecipes(["core"]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.recipes).toEqual([]);
+    expect(result.result.warnings[0]?.error).toMatch(
+      /required pack "analysis" is not enabled/,
+    );
   });
 
   it("malformed YAML → skipped with warning, ok stays true", async () => {
@@ -238,5 +467,27 @@ describe("listRecipes", () => {
       "core",
       "pack_contract_fixture",
     ]);
+  });
+
+  it("loads analysis-owned contract v1 fixture recipe when analysis pack is enabled", async () => {
+    delete process.env.STREETLIGHT_RECIPES_DIR;
+    const result = await listRecipes(["core", "analysis"]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const fixture = result.result.recipes.find(
+      (recipe) => recipe.qualified_id === "analysis:analysis_loop_candidate_probe",
+    ) as Record<string, unknown> | undefined;
+    expect(fixture?.pack).toBe("analysis");
+    expect(fixture?.contract_version).toBe(1);
+    expect(fixture?.execution_model).toBe("agent_step");
+    expect(fixture?.required_templates).toEqual(["item_audio_analyze"]);
+    expect(fixture?.required_read_scopes).toEqual(["selection", "artifact"]);
+    expect(fixture?.required_artifact_schemas).toEqual([
+      "openreaper.analysis.item_audio.v1",
+    ]);
+    expect(result.result.warnings).not.toContainEqual(
+      expect.objectContaining({ pack: "analysis" }),
+    );
   });
 });

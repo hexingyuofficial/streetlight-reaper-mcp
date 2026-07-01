@@ -1,0 +1,73 @@
+id: analysis_loop_candidate_probe
+description: Probe a selected audio item for loop candidates and click risk using analysis artifacts.
+version: 0.1.0
+
+contract_version: 1
+execution_model: agent_step
+required_packs:
+  - core
+  - analysis
+required_templates:
+  - item_audio_analyze
+required_read_scopes:
+  - selection
+  - artifact
+required_artifact_schemas:
+  - openreaper.analysis.item_audio.v1
+produces:
+  - type: artifact
+    schema: openreaper.analysis.item_audio.v1
+    read_scope: artifact
+    ref_prefix: "artifact:analysis:analysis:"
+    description: Bounded analysis JSON with loop_candidates and click_risk when requested.
+approval_points:
+  - id: selected_audio_item
+    description: Agent must confirm exactly one selected in-project audio item before mutation-free analysis.
+assertions:
+  - id: artifact_ref_only
+    description: call_template returns only the analysis artifact ref in changed_ids.
+  - id: artifact_read_scope
+    description: Agent reads summary or payload through get_state(scope="artifact"), never scope="analysis".
+  - id: no_project_mutation
+    description: item_audio_analyze is read-only and must not change REAPER project state or LAST_RESULT.
+fixture_smoke:
+  description: Select one known audio item, analyze loop candidates and click risk, then read the artifact payload.
+  steps:
+    - tool: get_state
+      params:
+        scope: selection
+    - tool: call_template
+      name: item_audio_analyze
+      params:
+        item_id: "{{ selection.selection.items[0].id }}"
+        features:
+          - loop_candidates
+          - click_risk
+    - tool: get_state
+      params:
+        scope: artifact
+        artifact_ref: "{{ analysis.changed_ids[0] }}"
+        view: payload
+
+inputs:
+  selected_item:
+    description: Exactly one selected in-project audio item.
+steps:
+  - tool: get_state
+    bind: selection
+    params:
+      scope: selection
+  - tool: call_template
+    bind: analysis
+    name: item_audio_analyze
+    params:
+      item_id: "{{ selection.selection.items[0].id }}"
+      features:
+        - loop_candidates
+        - click_risk
+  - tool: get_state
+    bind: analysis_payload
+    params:
+      scope: artifact
+      artifact_ref: "{{ analysis.changed_ids[0] }}"
+      view: payload

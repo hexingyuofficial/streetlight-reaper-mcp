@@ -11,6 +11,32 @@ first.
 
 ## Current Status
 
+**Slice 29 ✅ static-green / reviewer-passed
+(2026-07-02).** Source:
+`docs/plans/SLICE_29_RECIPE_CONTRACT_ARCHITECT_PLAN.md`. This is
+Phase 3.5 Recipe Contract Foundation v1. User locked S29-D1..D7:
+recipe contract v1; legacy recipes stay passthrough; only
+`contract_version:1` recipes enter strict validation; invalid v1
+recipes are skipped into `warnings[]` while `list_recipes` stays
+`ok:true`; analysis may contribute a metadata-only fixture recipe; no
+REAPER live smoke is required for this TS/YAML/docs-only slice; validate
+enabled-pack templates/read-scopes/artifact schemas but not Jinja
+placeholders or template params; artifact reads stay
+`scope:"artifact"`, not `scope:"analysis"`. Implementation adds v1
+metadata/reference validation to `list_recipes`, keeps
+`impact_variations` legacy, adds
+`analysis:analysis_loop_candidate_probe`, documents the contract in
+`docs/RECIPES.md`, and adds `docs/smokes/recipe_contract.md`. No recipe
+executor, no new MCP tool, no loop/MIDI mutation, no runtime Lua/bridge
+change, no core parking. Static gates are green: `npm run build` clean,
+`npm test` 446/446, `npm run check:error-codes-fresh` -> 26 codes
+fresh, default manifest/template-authoring -> 12 templates,
+`core,analysis` manifest/template-authoring -> 13 templates, all-pack
+manifest/template-authoring -> 18 templates, and `git diff --check`
+clean. Reviewer found one P2: `produces[].read_scope` allowed
+non-artifact scopes. Fixed by requiring `artifact` and adding regression
+coverage.
+
 **Slice 28 ✅ live-smoked / static-green
 (2026-07-01).** Source:
 `docs/plans/SLICE_28_ANALYSIS_CLICK_RISK_ARCHITECT_PLAN.md`. This is

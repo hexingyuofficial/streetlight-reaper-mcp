@@ -72,3 +72,16 @@ is omitted. It does not read older artifacts.
 No seamless-loop proof, automatic trim/fade/set-loop/render, external
 sample search, embeddings, AI generation, OpenAudio integration, MIDI,
 FX, routing, or scene/recipe execution lives in this pack yet.
+
+## Recipe Fixture
+
+The pack also contributes one contract-v1 recipe:
+
+```text
+analysis:analysis_loop_candidate_probe
+```
+
+It describes an agent-step workflow for selecting one audio item,
+calling `item_audio_analyze` with `loop_candidates + click_risk`, and
+reading the resulting JSON artifact through `get_state(scope:"artifact")`.
+It is metadata only; OpenReaper does not execute recipes.

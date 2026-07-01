@@ -1,14 +1,32 @@
-# Next Window Briefing — 2026-07-01
+# Next Window Briefing — 2026-07-02
 
 Use this as the first read after a context reset. It is the current truth
-after Slice 28 static implementation and REAPER live smoke.
+after Slice 29 static implementation.
 
 ## Snapshot
 
 - Repo: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
-- Branch: `main`; latest pushed checkpoint is Slice 26:
-  `b6077a6 first-real-version: slice 26 analysis transients`
+- Branch: `main`; latest pushed checkpoint is Slice 28:
+  `413b11d first-real-version: slice 28 analysis click risk`
+- Slice 29 is implemented and static-green; no REAPER live smoke was
+  required because it touched only TS/YAML/docs. Source:
+  `docs/plans/SLICE_29_RECIPE_CONTRACT_ARCHITECT_PLAN.md`. It adds
+  recipe contract v1 for `list_recipes`: legacy recipes remain
+  passthrough, while `contract_version:1` recipes validate metadata for
+  required packs, templates, read scopes, artifact schemas, produced
+  artifacts, approval points, assertions, and fixture smoke notes. Bad
+  v1 recipes are skipped with `warnings[]` and `list_recipes` remains
+  `ok:true`. The analysis pack now contributes
+  `analysis:analysis_loop_candidate_probe`, a metadata-only
+  agent-step fixture recipe for `item_audio_analyze` artifacts. There is
+  no recipe executor, no new MCP tool, no loop/MIDI mutation, no
+  `get_state(scope:"analysis")`, and no core parking. Static gates are
+  green: build clean, `npm test` 446/446, error codes fresh at 26,
+  default manifest/template-authoring 12, `core,analysis` 13,
+  all-pack 18, and `git diff --check` clean. Reviewer found one P2:
+  `produces[].read_scope` allowed non-artifact scopes. Fixed by
+  requiring `artifact` and adding regression coverage.
 - Slice 28 is implemented, static-green, and REAPER live-smoked.
   Source: `docs/plans/SLICE_28_ANALYSIS_CLICK_RISK_ARCHITECT_PLAN.md`.
   It adds explicit opt-in `features:["click_risk"]` to

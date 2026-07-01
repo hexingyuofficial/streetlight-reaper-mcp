@@ -111,7 +111,7 @@ async function main(): Promise<void> {
 
   server.tool(
     "list_recipes",
-    "List Streetlight recipes (YAML workflow guides agents follow). Re-reads recipes/*.yaml on every call (no caching). Recipes are agent-readable docs, NOT server-executed — the agent orchestrates each step itself via call_template. Bad YAML files are skipped and surface in result.warnings[]; the tool only fails on infrastructure errors. Override the directory with STREETLIGHT_RECIPES_DIR env var.",
+    "List Streetlight recipes (YAML workflow guides agents follow). Re-reads recipes/*.yaml on every call (no caching). Recipes are agent-readable docs, NOT server-executed — the agent orchestrates each step itself via call_template. contract_version:1 recipes expose metadata for required packs/templates/read scopes/artifact schemas; legacy recipes stay passthrough. Bad YAML or invalid v1 recipes are skipped and surface in result.warnings[]; the tool only fails on infrastructure errors. Override the directory with STREETLIGHT_RECIPES_DIR env var.",
     {},
     async () => {
       const result = await listRecipes();

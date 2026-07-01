@@ -11,6 +11,32 @@ async function readRepoFile(relPath) {
 }
 
 describe("MCP server public tool wiring", () => {
+  it("still exposes exactly the five public MCP tools", async () => {
+    const index = await readRepoFile("packages/mcp-server/src/index.ts");
+    const toolNames = Array.from(index.matchAll(/server\.tool\(\s*\n\s*"([^"]+)"/g))
+      .map((match) => match[1]);
+
+    expect(toolNames).toEqual([
+      "ping",
+      "get_state",
+      "list_templates",
+      "list_recipes",
+      "call_template",
+    ]);
+  });
+
+  it("describes recipe contract v1 without implying server-side execution", async () => {
+    const index = await readRepoFile("packages/mcp-server/src/index.ts");
+
+    const listRecipesStart = index.indexOf('server.tool(\n    "list_recipes"');
+    expect(listRecipesStart).toBeGreaterThan(0);
+    const listRecipesBlock = index.slice(listRecipesStart);
+
+    expect(listRecipesBlock).toMatch(/contract_version:1 recipes expose metadata/);
+    expect(listRecipesBlock).toMatch(/legacy recipes stay passthrough/);
+    expect(listRecipesBlock).toMatch(/NOT server-executed/);
+  });
+
   it("exposes and forwards Slice 14 call_template idempotency_key", async () => {
     const index = await readRepoFile("packages/mcp-server/src/index.ts");
 
