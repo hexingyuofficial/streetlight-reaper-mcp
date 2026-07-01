@@ -1,14 +1,37 @@
 # Next Window Briefing — 2026-07-01
 
 Use this as the first read after a context reset. It is the current truth
-after Slice 25 static implementation and REAPER live smoke.
+after Slice 26 static implementation and REAPER live smoke.
 
 ## Snapshot
 
 - Repo: `/Users/Zhuanz/Documents/streetlight-reaper-mcp`
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
-- Branch: `main`; latest pushed checkpoint is Slice 19:
-  `e54fd9c kernel-hardening: slice 19 track color template`
+- Branch: `main`; latest pushed checkpoint is Slice 25:
+  `9631983 first-real-version: slice 25 audio analysis artifact`
+- Slice 26 is implemented, static-green, and REAPER live-smoked.
+  Source: `docs/plans/SLICE_26_ANALYSIS_TRANSIENTS_ARCHITECT_PLAN.md`.
+  It adds explicit opt-in `features:["transients"]` to
+  `item_audio_analyze`. Defaults remain `loudness + peaks + silence`;
+  schema/ref stay `openreaper.analysis.item_audio.v1` and
+  `artifact:analysis:analysis:<id>`; no `get_state(scope:"analysis")`.
+  Constants: `MAX_TRANSIENTS=200`, min gap `0.05s`, rise `10dB`,
+  threshold floor `-60dBFS`; actual `threshold_dbfs` is distinct from
+  the floor in payload limits. Static gates are green: build clean,
+  `npm test` 430/430, error codes fresh at 26, default
+  manifest/template-authoring 12 templates, `core,analysis` 13,
+  all-pack 18, and `git diff --check` clean. Live smoke passed on
+  REAPER `7.71/macOS-arm64` with bridge `core,analysis`; stamp
+  `s26-live-1782918106518`; evidence file:
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/s26-live-1782918106518/evidence.json`.
+  The 5-hit fixture produced transient times
+  `0.19737, 0.499229, 0.847528, 1.195828, 1.648617`; main ref
+  `artifact:analysis:analysis:art_20260701150148387_004_32fd49`;
+  all-feature ref
+  `artifact:analysis:analysis:art_20260701150150039_007_902d41`.
+  Default analysis still omits transients; all-feature regression,
+  LAST_RESULT preservation, source-offline `AUDIO_SOURCE_OFFLINE`, and
+  clean queue all passed.
 - Slice 19 is committed and pushed. It is static-green and live-smoked
   on REAPER `7.71/macOS-arm64`; H6's basic loop is closed.
 - Slice 25 is implemented, static-green, and REAPER live-smoked. Source:

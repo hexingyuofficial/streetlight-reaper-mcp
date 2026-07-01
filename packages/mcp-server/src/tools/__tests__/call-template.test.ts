@@ -258,7 +258,46 @@ describe("callTemplate", () => {
       expect(result.result).not.toHaveProperty("loudness");
       expect(result.result).not.toHaveProperty("peaks");
       expect(result.result).not.toHaveProperty("silence");
+      expect(result.result).not.toHaveProperty("transients");
       expect(bridge.seen[0]?.expected_delta).toBeUndefined();
+      expect(bridge.seen[0]?.params).toEqual({
+        item_id: "selected:0",
+        features: ["loudness", "peaks", "silence"],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("item_audio_analyze accepts explicit transients without putting them in the default feature set", async () => {
+    const artifactRef =
+      "artifact:analysis:analysis:art_20260701010101999_001_cd34ef";
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+    const bridge = startFakeBridge(queueDir, () =>
+      fakeTemplateOk("item_audio_analyze", [artifactRef]),
+    );
+    try {
+      const result = await callTemplate(client, analysisRegistry, {
+        name: "item_audio_analyze",
+        params: { item_id: "selected:0", features: ["transients"] },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.result).toEqual({
+        template: "item_audio_analyze",
+        changed_count: 1,
+        changed_ids: [artifactRef],
+        truncated: false,
+      });
+      expect(result.result.changed_ids).toEqual([artifactRef]);
+      expect(result.result).not.toHaveProperty("artifact");
+      expect(result.result).not.toHaveProperty("payload");
+      expect(result.result).not.toHaveProperty("transients");
+      expect(bridge.seen[0]?.params).toEqual({
+        item_id: "selected:0",
+        features: ["transients"],
+      });
     } finally {
       await bridge.stop();
     }
@@ -345,12 +384,27 @@ describe("callTemplate", () => {
     expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
   });
 
-  it("validates item_audio_analyze features before queue write", async () => {
+  it("validates duplicate item_audio_analyze features before queue write", async () => {
     const analysisRegistry = new CapabilityRegistry();
     registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
     const result = await callTemplate(client, analysisRegistry, {
       name: "item_audio_analyze",
-      params: { item_id: "selected:0", features: ["transients"] },
+      params: { item_id: "selected:0", features: ["transients", "transients"] },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("PARAMS_INVALID");
+      expect(result.error.message).toMatch(/Duplicate analysis feature/);
+    }
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
+  it("validates unknown item_audio_analyze features before queue write", async () => {
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+    const result = await callTemplate(client, analysisRegistry, {
+      name: "item_audio_analyze",
+      params: { item_id: "selected:0", features: ["loop_candidates"] },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {

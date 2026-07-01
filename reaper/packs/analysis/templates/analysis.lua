@@ -4,6 +4,8 @@
 -- items. It writes compact JSON artifacts and deliberately does not mutate
 -- REAPER, create loop candidates, run arbitrary analyzers, or call external
 -- tools.
+-- Slice 26 adds explicit opt-in transient candidates. They are heuristic
+-- onset markers, not loop candidates or click-risk metrics.
 
 local M = {}
 
@@ -14,6 +16,11 @@ local MAX_ARTIFACT_JSON_BYTES = 49152
 local DEFAULT_SAMPLE_RATE = 44100
 local BLOCK_SAMPLES = 4096
 local SILENCE_THRESHOLD = 0.0001 -- -80 dBFS amplitude.
+local MAX_TRANSIENTS = 200
+local TRANSIENT_FRAME_SAMPLES = 512
+local TRANSIENT_MIN_GAP_SECONDS = 0.05
+local TRANSIENT_RISE_THRESHOLD_DB = 10
+local TRANSIENT_THRESHOLD_FLOOR_DBFS = -60
 local EPSILON = 0.000000000001
 
 local function raise(code, message, recoverable)
@@ -35,6 +42,11 @@ local function dbfs(value)
   local db = 20 * (math.log(value) / math.log(10))
   if db < -120 then return -120 end
   return round3(db)
+end
+
+local function linear_from_dbfs(value)
+  if type(value) ~= "number" then return 0 end
+  return 10 ^ (value / 20)
 end
 
 local function ensure_artifacts(ctx)
@@ -182,6 +194,103 @@ local function close_silence_segment(state, end_time)
   state.silence_start = nil
 end
 
+local function append_transient_frame(state, frame_start, frame_peak)
+  state.transient_frames[#state.transient_frames + 1] = {
+    start = frame_start,
+    peak = frame_peak,
+  }
+end
+
+local function scan_frame_peaks(samples, frames, channels, block_local_start, state)
+  local frame_start_index = 0
+  while frame_start_index < frames do
+    local frame_count = math.min(TRANSIENT_FRAME_SAMPLES, frames - frame_start_index)
+    local frame_peak = 0
+    for frame_offset = 0, frame_count - 1 do
+      local frame_base = (frame_start_index + frame_offset) * channels
+      for channel = 1, channels do
+        local value = samples[frame_base + channel] or 0
+        local abs_value = math.abs(value)
+        if abs_value > frame_peak then frame_peak = abs_value end
+      end
+    end
+    local frame_start = block_local_start + (frame_start_index / DEFAULT_SAMPLE_RATE)
+    append_transient_frame(state, frame_start, frame_peak)
+    frame_start_index = frame_start_index + frame_count
+  end
+end
+
+local function accept_transient_candidate(events, candidate, min_gap, cap)
+  local last = events[#events]
+  if last and candidate.time - last.time < min_gap then
+    if candidate.peak_linear > last.peak_linear or candidate.score_db > last.score_db then
+      events[#events] = candidate
+    end
+    return true, false
+  end
+  if #events < cap then
+    events[#events + 1] = candidate
+    return true, false
+  end
+  return false, true
+end
+
+local function detect_transients(scan, window)
+  local peak_db = dbfs(scan.abs_peak)
+  local threshold_db = math.max(TRANSIENT_THRESHOLD_FLOOR_DBFS, peak_db - 36)
+  local threshold_linear = linear_from_dbfs(threshold_db)
+  local events = {}
+  local total_detected = 0
+  local truncated = false
+  local previous_smooth = threshold_linear
+  local alpha = 0.85
+
+  for i = 1, #scan.transient_frames do
+    local frame = scan.transient_frames[i]
+    local peak = frame.peak or 0
+    local reference = math.max(previous_smooth, EPSILON)
+    local score_db = dbfs(math.max(peak, EPSILON) / reference)
+
+    if peak >= threshold_linear and score_db >= TRANSIENT_RISE_THRESHOLD_DB then
+      local local_time = frame.start
+      local candidate = {
+        time = round6(local_time),
+        project_time = round6(window.item_position + local_time),
+        peak_linear = round6(peak),
+        peak_dbfs = dbfs(peak),
+        score_db = score_db,
+      }
+      total_detected = total_detected + 1
+
+      local _, overflowed = accept_transient_candidate(
+        events,
+        candidate,
+        TRANSIENT_MIN_GAP_SECONDS,
+        MAX_TRANSIENTS
+      )
+      if overflowed then truncated = true end
+    end
+
+    previous_smooth = (previous_smooth * alpha) + (peak * (1 - alpha))
+  end
+
+  return {
+    type = "energy_envelope_onsets",
+    algorithm_version = "transients_v1",
+    events = events,
+    event_count = #events,
+    total_detected = total_detected,
+    truncated = truncated,
+    cap = MAX_TRANSIENTS,
+    min_gap_seconds = TRANSIENT_MIN_GAP_SECONDS,
+    threshold_dbfs = round3(threshold_db),
+    threshold_linear = round6(threshold_linear),
+    threshold_floor_dbfs = TRANSIENT_THRESHOLD_FLOOR_DBFS,
+    rise_threshold_db = TRANSIENT_RISE_THRESHOLD_DB,
+    frame_samples = TRANSIENT_FRAME_SAMPLES,
+  }
+end
+
 local function scan_audio(take, window, features, errs)
   ensure_accessor_api(errs)
 
@@ -204,6 +313,7 @@ local function scan_audio(take, window, features, errs)
     silence_start = nil,
     silence_truncated = false,
     total_silence_seconds = 0,
+    transient_frames = {},
   }
 
   local ok, err_obj = pcall(function()
@@ -246,6 +356,10 @@ local function scan_audio(take, window, features, errs)
           if abs_value > block_peak then block_peak = abs_value end
         end
         state.sample_frames = state.sample_frames + frames
+        if has_feature(features, "transients") then
+          local block_local_start_for_frames = cursor - window.project_start + window.local_start
+          scan_frame_peaks(buffer, frames, channels, block_local_start_for_frames, state)
+        end
 
         if has_feature(features, "silence") then
           local block_start_local = cursor - window.project_start + window.local_start
@@ -321,6 +435,33 @@ local function build_feature_payload(scan, window, features, ctx)
     }
     summary.silence_count = #scan.silence_segments
     summary.silence_truncated = scan.silence_truncated
+  end
+
+  if has_feature(features, "transients") then
+    local transients = detect_transients(scan, window)
+    computed[#computed + 1] = "transients"
+    payload.transients = {
+      type = transients.type,
+      algorithm_version = transients.algorithm_version,
+      events = ctx.json.array(transients.events),
+      event_count = transients.event_count,
+      total_detected = transients.total_detected,
+      truncated = transients.truncated,
+      cap = transients.cap,
+      min_gap_seconds = transients.min_gap_seconds,
+      threshold_dbfs = transients.threshold_dbfs,
+      threshold_linear = transients.threshold_linear,
+      threshold_floor_dbfs = transients.threshold_floor_dbfs,
+      rise_threshold_db = transients.rise_threshold_db,
+      frame_samples = transients.frame_samples,
+    }
+    summary.transient_count = transients.event_count
+    summary.transient_total_detected = transients.total_detected
+    summary.transients_truncated = transients.truncated
+    if transients.event_count > 0 then
+      summary.first_transient_time = transients.events[1].time
+      summary.last_transient_time = transients.events[transients.event_count].time
+    end
   end
 
   summary.computed_features = ctx.json.array(computed)
@@ -404,14 +545,21 @@ function M.item_audio_analyze(params, ctx)
       sample_rate = DEFAULT_SAMPLE_RATE,
       channels = 2,
       block_samples = BLOCK_SAMPLES,
+      max_transients = MAX_TRANSIENTS,
+      transient_min_gap_seconds = TRANSIENT_MIN_GAP_SECONDS,
+      transient_frame_samples = TRANSIENT_FRAME_SAMPLES,
+      transient_rise_threshold_db = TRANSIENT_RISE_THRESHOLD_DB,
+      transient_threshold_floor_dbfs = TRANSIENT_THRESHOLD_FLOOR_DBFS,
     },
     loudness = feature_payload.loudness,
     peaks = feature_payload.peaks,
     silence = feature_payload.silence,
+    transients = feature_payload.transients,
     warnings = ctx.json.array({
       "loudness is RMS dBFS, not LUFS",
       "peaks are sample peaks, not true peaks",
-      "transients and loop_candidates are deferred",
+      "transients are heuristic onset candidates, not loop candidates or click-risk metrics",
+      "loop_candidates are deferred",
     }),
   }
 
@@ -424,6 +572,11 @@ function M.item_audio_analyze(params, ctx)
     peak_dbfs = feature_summary.peak_dbfs,
     silence_count = feature_summary.silence_count,
     silence_truncated = feature_summary.silence_truncated,
+    transient_count = feature_summary.transient_count,
+    transient_total_detected = feature_summary.transient_total_detected,
+    transients_truncated = feature_summary.transients_truncated,
+    first_transient_time = feature_summary.first_transient_time,
+    last_transient_time = feature_summary.last_transient_time,
     sample_frames = feature_summary.sample_frames,
   }
 

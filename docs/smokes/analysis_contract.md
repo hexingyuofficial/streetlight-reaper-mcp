@@ -1,6 +1,8 @@
 # Analysis Contract Smoke
 
-This smoke verifies Slice 25 with a real REAPER bridge.
+This smoke verifies the analysis pack with a real REAPER bridge. Slice 25
+covers loudness / peaks / silence; Slice 26 adds explicit opt-in
+transient candidates.
 
 ## Preconditions
 
@@ -54,9 +56,32 @@ error codes.
 9. LAST_RESULT isolation: create/rename a track so
    `last_result:track:0` is live, call `item_audio_analyze`, then
    `track_rename last_result:track:0` successfully.
-10. Negative: source unavailable. If a stable offline-media setup is not
+10. Transient regression: generate or import a short WAV with 4-6 obvious
+    hits, then call:
+
+    ```json
+    {
+      "name": "item_audio_analyze",
+      "params": {
+        "item_id": "selected:0",
+        "features": ["transients"]
+      }
+    }
+    ```
+
+    Expected: locked envelope with one artifact ref; summary
+    `computed_features:["transients"]`; transient count around the known
+    hit count; `transients_truncated:false`; payload events carry
+    item-local `time`, `project_time`, `peak_linear`, `peak_dbfs`, and
+    `score_db`. Threshold metadata must expose the actual
+    `threshold_dbfs` and the floor `transient_threshold_floor_dbfs=-60`
+    separately.
+11. All-feature regression: call with
+    `["loudness","peaks","silence","transients"]`; old Slice 25 fields
+    remain sane and transients remain bounded.
+12. Negative: source unavailable. If a stable offline-media setup is not
     practical, use an item with no active take. Expected typed error:
     `AUDIO_SOURCE_OFFLINE`.
-11. Regression: `get_state(scope:"analysis")` remains invalid or
+13. Regression: `get_state(scope:"analysis")` remains invalid or
     unimplemented; use `scope:"artifact"` only.
-12. Queue ends clean: `pending=0`, `running=0`, `done=0`.
+14. Queue ends clean: `pending=0`, `running=0`, `done=0`.

@@ -11,6 +11,51 @@ first.
 
 ## Current Status
 
+**Slice 26 ✅ live-smoked / static-green
+(2026-07-01).** Source:
+`docs/plans/SLICE_26_ANALYSIS_TRANSIENTS_ARCHITECT_PLAN.md`. This is
+Phase 3B Analysis Transients MVP. User locked S26-D1..D5:
+`transients` is explicit opt-in for `item_audio_analyze`; defaults stay
+`loudness + peaks + silence`; schema stays
+`openreaper.analysis.item_audio.v1`; no user threshold params in this
+slice; constants are `MAX_TRANSIENTS=200`, min gap `0.05s`, rise
+`10dB`, floor `-60dBFS`; summary includes first/last transient times.
+Additional constraint: payload must distinguish actual `threshold_dbfs`
+from `limits.transient_threshold_floor_dbfs`. Scope deliberately
+excludes loop candidates, click-risk, seamless loop, recipe, MIDI,
+OpenAudio, AI generation, external analyzer, new MCP tool, and
+`get_state(scope:"analysis")`. Static gates are green:
+`npm run build` clean, `npm test` 430/430,
+`npm run check:error-codes-fresh` → 26 codes fresh, default
+`check:manifest` → 12 templates, default `check:template-authoring`
+→ 12 templates, `core,analysis` manifest/template-authoring → 13
+templates, all-pack manifest/template-authoring → 18 templates, and
+`git diff --check` clean. REAPER live smoke passed on
+`7.71/macOS-arm64` after a full quit/reopen with bridge
+`core,analysis`; ready output showed 26 error codes, core `(12
+templates)`, analysis `(1 templates)`, and `item_audio_analyze`. Smoke
+stamp `s26-live-1782918106518`; evidence:
+`/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/s26-live-1782918106518/evidence.json`.
+The 5-hit WAV fixture yielded transient event times
+`0.19737, 0.499229, 0.847528, 1.195828, 1.648617`, all within the 35ms
+smoke tolerance. Main transient artifact:
+`artifact:analysis:analysis:art_20260701150148387_004_32fd49`;
+all-feature artifact:
+`artifact:analysis:analysis:art_20260701150150039_007_902d41`.
+Transient summary/payload showed `computed_features:["transients"]`,
+`transient_count:5`, `transient_total_detected:10`,
+`transients_truncated:false`, response bytes `680` summary / `2440`
+payload, actual `threshold_dbfs:-37.859`, and floor `-60` separately
+exposed in payload and limits. All-feature regression returned
+`loudness, peaks, silence, transients` with RMS `-21.17`, peak
+`-1.859`, silence count `6`, transient count `5`; default analysis
+still returned only `loudness, peaks, silence` and omitted
+`transients`. LAST_RESULT anchor
+`guid:{1ACB4A98-FEC9-B440-90BC-42A5B6E8E445}` survived analysis;
+analyzed item `guid:{1CF4198D-B511-0548-8FF3-BA13AB42DD25}`. Deleting
+the copied media source returned `AUDIO_SOURCE_OFFLINE` with message
+`Item source is offline or unavailable`. Queue ended clean.
+
 **Slice 25 ✅ live-smoked / static-green
 (2026-07-01).** Source:
 `docs/plans/SLICE_25_ANALYSIS_CONTRACT_ARCHITECT_PLAN.md`. This is

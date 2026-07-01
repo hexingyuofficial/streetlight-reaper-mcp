@@ -7,8 +7,8 @@ STREETLIGHT_ENABLED_PACKS=core,analysis
 ```
 
 It gives agents bounded facts about audio already inside the REAPER
-project. Slice 25 ships one template, `item_audio_analyze`, which writes
-one JSON artifact:
+project. The pack currently ships one template, `item_audio_analyze`,
+which writes one JSON artifact:
 
 ```text
 artifact:analysis:analysis:<id>
@@ -29,11 +29,15 @@ Read details through:
   `{ item_id, features?, time_range? }`
 - default features:
   `["loudness", "peaks", "silence"]`
+- opt-in features:
+  `["transients"]`
 - schema:
   `openreaper.analysis.item_audio.v1`
 - maximum analysis range:
   `120` item-local seconds
 - maximum silence segments:
+  `200`
+- maximum transient events:
   `200`
 
 ## Important Definitions
@@ -42,10 +46,13 @@ Read details through:
 - `peaks` are sample peaks, not true peaks.
 - `silence` uses a simple amplitude threshold and is not a musical
   phrase detector.
+- `transients` are heuristic onset candidates. They are useful as
+  machine-readable attack-point hints, but they are not loop candidates,
+  click-risk metrics, beat grids, or musical phrase boundaries.
 - Analysis uses REAPER PCM accessors and reads pre-FX item/take audio.
 
 ## Explicitly Deferred
 
-No transients, loop candidates, click-risk metrics, external sample
-search, embeddings, AI generation, OpenAudio integration, MIDI, FX,
-routing, or scene/recipe execution lives in this pack yet.
+No loop candidates, click-risk metrics, external sample search,
+embeddings, AI generation, OpenAudio integration, MIDI, FX, routing, or
+scene/recipe execution lives in this pack yet.
