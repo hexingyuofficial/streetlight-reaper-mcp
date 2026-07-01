@@ -11,6 +11,59 @@ first.
 
 ## Current Status
 
+**Slice 24 ✅ live-smoked / static-green
+(2026-07-01).** Source:
+`docs/plans/SLICE_24_DELIVERY_CLOSURE_ARCHITECT_PLAN.md`. This is
+Phase 2.5 Delivery Closure MVP. User locked S24-D1..D10: new opt-in
+`delivery` pack; `delivery_plan + delivery_report`; validation failures
+write fail report artifacts; missing/corrupt/oversized plan artifact
+reads remain typed call errors; WAV header sniff only; cleanup
+provenance is optional and not dereferenced; stale mismatch is
+conservative fail; bad region names reuse existing `REGION_NAME_INVALID`;
+`delivery_plan` preflights `output_dir` with existing
+`OUTPUT_DIR_MISSING` / `OUTPUT_DIR_NOT_WRITABLE`; no new MCP tool, no
+mastering/loudness/multi-format/upload, no `cleanup_apply_safe`, no
+destructive cleanup, no `render_region` JSON migration, and no delivery
+code in `core`.
+Static gates are green: `npm run build` clean, `npm test` 421/421,
+`npm run check:error-codes-fresh` → 24 codes fresh, default
+`check:manifest` → 12 templates, `core,delivery` → 14,
+`core,cleanup,delivery` → 15,
+`core,cleanup,delivery,pack_contract_fixture` → 17; default
+`check:template-authoring` → 12 templates, `core,delivery` → 14,
+`core,cleanup,delivery` → 15,
+`core,cleanup,delivery,pack_contract_fixture` → 17; `git diff --check`
+clean.
+REAPER live smoke passed on `7.71/macOS-arm64` with bridge
+`core,cleanup,delivery`. Smoke stamp `s24-live-1782906947707`; queue
+`/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
+`ping` returned `bridge:"connected"`, and `list_templates` returned 15
+templates with `delivery_plan` / `delivery_report` owned by pack
+`delivery`, each exposing JSON artifact metadata and
+`updates_last_result:false`. Main region:
+`s24-live-1782906947707-main`; output dir:
+`/tmp/s24-live-1782906947707-render`; plan ref:
+`artifact:delivery:plan:art_20260701115550245_006_dcdce6`. Plan payload
+expected filename/path
+`s24-live-1782906947707-main.wav` /
+`/tmp/s24-live-1782906947707-render/s24-live-1782906947707-main.wav`.
+`render_region` wrote that exact absolute path, size `216736` bytes,
+with `RIFF` / `WAVE` header bytes and no `.RPP` / `.RPP-bak` sidecars.
+Report ref:
+`artifact:delivery:report:art_20260701115552923_010_a44ee5`; payload
+`overall_status:"pass"` with all 7 checks passing: `plan_fresh`,
+expected file exists/nonempty, filename match, `.wav`, WAV header, and
+no sidecars. LAST_RESULT anchor
+`guid:{7228A0ED-E948-BC4D-9C44-866567FDD18D}` survived both
+`delivery_plan` and `delivery_report` artifact calls. Negative
+missing-WAV plan/report wrote fail artifact
+`artifact:delivery:report:art_20260701115556554_017_510ca6` without a
+call error; negative stale-project mismatch wrote fail artifact
+`artifact:delivery:report:art_20260701115600666_023_4fa866` with
+`plan_fresh:false`. Queue ended `pending=0`, `running=0`, `done=0`.
+Smoke-created tracks and regions remain in the current REAPER project
+for manual undo/delete.
+
 **Slice 23A ✅ live-smoked / static-green (2026-07-01).** Source:
 `docs/plans/SLICE_23A_CLEANUP_SAFE_AGENT_STEP_ARCHITECT_PLAN.md`.
 This is Phase 2B Cleanup Safe Agent-Step MVP. User locked D1-D6:
@@ -2356,12 +2409,9 @@ for future Bilibili / YouTube / README use.
 
 ### Next action
 
-1. **Slice 20+ rolling workflow.** The current kernel-hardening H6
-   thread has reached its documented closure point. Use
-   `docs/plans/OPENREAPER_FIRST_REAL_VERSION_EXECUTION_PLAN.md` and the
-   latest slice packet. Architect plans; Codex executes; Codex pulls
-   reviewer/smoke; docs move with the slice; local commit only on
-   explicit ask; push only on explicit push ask.
+1. **Slice 24 delivery closure.** Current state is implemented,
+   static-green, and REAPER-smoke-green. Next action is user-directed:
+   commit on explicit ask, request the next slice packet, or pivot.
 2. **Second-Mac smoke / v0.1 release tag remains available.**
    Setup/launcher reproducer is ready;
    `docs/CROSS_MAC_SMOKE.md` is still the runbook.

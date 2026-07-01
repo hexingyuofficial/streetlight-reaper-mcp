@@ -489,6 +489,62 @@ describe("Lua bridge structure", () => {
     expect(cleanupLua).not.toMatch(/UpdateArrange/);
   });
 
+  it("wires Slice 24 delivery_plan/report as read-only artifact templates", async () => {
+    const [deliveryManifest, deliveryLua, templateIndex, authoringLint] = await Promise.all([
+      readRepoFile("reaper/packs/delivery/manifest.lua"),
+      readRepoFile("reaper/packs/delivery/templates/delivery.lua"),
+      readRepoFile("packages/mcp-server/src/templates/index.ts"),
+      readRepoFile("scripts/template-authoring-lint.mjs"),
+    ]);
+
+    expect(templateIndex).toMatch(/DELIVERY_PACK_ID/);
+    expect(templateIndex).toMatch(/registerDeliveryTemplates/);
+    expect(authoringLint).toMatch(/delivery: "packages\/mcp-server\/src\/packs\/delivery"/);
+
+    expect(deliveryManifest).toMatch(/name = "delivery"/);
+    expect(deliveryManifest).toMatch(/delivery_plan\s*=\s*{/);
+    expect(deliveryManifest).toMatch(/delivery_report\s*=\s*{/);
+    expect(deliveryManifest).toMatch(/entity_kind = "artifact"/);
+    expect(deliveryManifest).toMatch(/ref_prefix = "artifact:delivery:plan:"/);
+    expect(deliveryManifest).toMatch(/ref_prefix = "artifact:delivery:report:"/);
+    expect(deliveryManifest).toMatch(/schema = "openreaper\.delivery_plan\.v1"/);
+    expect(deliveryManifest).toMatch(/schema = "openreaper\.delivery_report\.v1"/);
+    expect(deliveryManifest).toMatch(/updates_last_result = false/);
+    expect(deliveryManifest).not.toMatch(/entity_buckets\s*=/);
+
+    expect(deliveryLua).toMatch(/function M\.delivery_plan\(params, ctx\)/);
+    expect(deliveryLua).toMatch(/function M\.delivery_report\(params, ctx\)/);
+    expect(deliveryLua).toMatch(/ctx\.artifacts:write_json/);
+    expect(deliveryLua).toMatch(/ctx\.artifacts:read\(plan_ref, "payload"\)/);
+    expect(deliveryLua).toMatch(/function validate_plan_payload\(plan, plan_ref, errs\)/);
+    expect(deliveryLua).toMatch(/owner_pack = "delivery"/);
+    expect(deliveryLua).toMatch(/scope = "plan"/);
+    expect(deliveryLua).toMatch(/scope = "report"/);
+    expect(deliveryLua).toMatch(/producer_template = "delivery_plan"/);
+    expect(deliveryLua).toMatch(/producer_template = "delivery_report"/);
+    expect(deliveryLua).toMatch(/PLAN_SCHEMA = "openreaper\.delivery_plan\.v1"/);
+    expect(deliveryLua).toMatch(/REPORT_SCHEMA = "openreaper\.delivery_report\.v1"/);
+    expect(deliveryLua).toMatch(/names\.validate_region_name/);
+    expect(deliveryLua).toMatch(/errs\.REGION_NAME_INVALID/);
+    expect(deliveryLua).toMatch(/errs\.OUTPUT_DIR_MISSING/);
+    expect(deliveryLua).toMatch(/errs\.OUTPUT_DIR_NOT_WRITABLE/);
+    expect(deliveryLua).toMatch(/errs\.ARTIFACT_NOT_FOUND|ctx\.artifacts:read/);
+    expect(deliveryLua).toMatch(/errs\.ARTIFACT_INVALID/);
+    expect(deliveryLua).toMatch(/RIFF/);
+    expect(deliveryLua).toMatch(/WAVE/);
+    expect(deliveryLua).toMatch(/overall_status = overall_status/);
+    expect(deliveryLua).toMatch(/dereferenced = false/);
+    expect(deliveryLua).not.toMatch(/afinfo/);
+    expect(deliveryLua).not.toMatch(/ExecProcess/);
+    expect(deliveryLua).not.toMatch(/Main_OnCommand/);
+    expect(deliveryLua).not.toMatch(/InsertTrackAtIndex/);
+    expect(deliveryLua).not.toMatch(/SetMediaTrackInfo_Value/);
+    expect(deliveryLua).not.toMatch(/GetSetMediaTrackInfo_String\([^\n]+true/);
+    expect(deliveryLua).not.toMatch(/DeleteTrack/);
+    expect(deliveryLua).not.toMatch(/DeleteProjectMarker/);
+    expect(deliveryLua).not.toMatch(/cleanup_apply_safe/);
+  });
+
   it("keeps Lua runtime code paths free of string-literal error codes", async () => {
     const files = [
       "reaper/streetlight_bridge.lua",
@@ -500,6 +556,7 @@ describe("Lua bridge structure", () => {
       "reaper/packs/core/templates/render.lua",
       "reaper/packs/core/lib/artifacts.lua",
       "reaper/packs/cleanup/templates/cleanup.lua",
+      "reaper/packs/delivery/templates/delivery.lua",
     ];
     const [errorsTs, ...texts] = await Promise.all([
       readRepoFile("packages/core/src/errors.ts"),

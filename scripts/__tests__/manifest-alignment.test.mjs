@@ -713,7 +713,11 @@ return { templates = {
     await expectEnabledPacksAlign(["core", "cleanup"]);
   });
 
-  it("real enabled core + cleanup + fixture registries align with their Lua manifests", async () => {
-    await expectEnabledPacksAlign(["core", "cleanup", "pack_contract_fixture"]);
+  it("real enabled core + delivery registries align with their Lua manifests", async () => {
+    await expectEnabledPacksAlign(["core", "delivery"]);
+  });
+
+  it("real enabled core + cleanup + delivery + fixture registries align with their Lua manifests", async () => {
+    await expectEnabledPacksAlign(["core", "cleanup", "delivery", "pack_contract_fixture"]);
   });
 });

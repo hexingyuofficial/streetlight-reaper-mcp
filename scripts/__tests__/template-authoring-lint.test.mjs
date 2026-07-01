@@ -230,4 +230,21 @@ describe("template authoring lint — real registry", () => {
     expect(findExampleSchemaMismatches(defs)).toEqual([]);
     expect(findSlugMismatches(defs, templateFiles)).toEqual([]);
   });
+
+  it("checks delivery pack examples and slugs when the pack is enabled", async () => {
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, ["core", "delivery"]);
+    const defs = registry.rawDefinitions();
+    const templateFiles = await readTemplateFilenames(repoRoot, [
+      "core",
+      "delivery",
+    ]);
+
+    expect(defs.some((def) => def.name === "delivery_plan")).toBe(true);
+    expect(defs.some((def) => def.name === "delivery_report")).toBe(true);
+    expect(templateFiles).toContain("delivery-plan.ts");
+    expect(templateFiles).toContain("delivery-report.ts");
+    expect(findExampleSchemaMismatches(defs)).toEqual([]);
+    expect(findSlugMismatches(defs, templateFiles)).toEqual([]);
+  });
 });

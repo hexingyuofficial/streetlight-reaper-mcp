@@ -1,4 +1,4 @@
-# Handoff — 2026-07-01 (Slice 23A cleanup safe agent-step MVP live-smoked)
+# Handoff — 2026-07-01 (Slice 24 delivery closure MVP live-smoked)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -19,6 +19,61 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   explicit ask. User preference (2026-06-29): local commits are okay as
   explicit save points, but avoid pushing during work hours unless the
   user explicitly makes an exception.
+- **Slice 24 ✅ live-smoked / static-green
+  (2026-07-01).**
+  Source: `docs/plans/SLICE_24_DELIVERY_CLOSURE_ARCHITECT_PLAN.md`.
+  User locked S24-D1..D10: delivery ships as opt-in pack
+  `delivery`, not core; templates are `delivery_plan` and
+  `delivery_report`; JSON artifacts are
+  `artifact:delivery:plan:<id>` / `artifact:delivery:report:<id>` with
+  schemas `openreaper.delivery_plan.v1` /
+  `openreaper.delivery_report.v1`; validation failures write fail
+  report artifacts, while missing/corrupt/oversized delivery plan
+  artifact reads propagate typed call errors; WAV evidence is RIFF/WAVE
+  header sniff only; cleanup provenance is optional and not
+  dereferenced; stale mismatch conservatively fails the report;
+  `delivery_plan` reuses existing region-name validation and output-dir
+  preflight. Explicit non-goals: no new MCP tool, no mastering,
+  loudness, multi-format, upload, `cleanup_apply_safe`, destructive
+  cleanup, `render_region` JSON migration, or delivery code parked in
+  core.
+  - Static gates are green: `npm run build` clean, `npm test` 421/421,
+    `npm run check:error-codes-fresh` → 24 codes fresh, default
+    `check:manifest` → 12 templates, `core,delivery` → 14 templates,
+    `core,cleanup,delivery` → 15 templates,
+    `core,cleanup,delivery,pack_contract_fixture` → 17 templates;
+    default `check:template-authoring` → 12 templates,
+    `core,delivery` → 14 templates, `core,cleanup,delivery` → 15
+    templates, `core,cleanup,delivery,pack_contract_fixture` → 17
+    templates; `git diff --check` clean.
+  - REAPER live smoke passed on `7.71/macOS-arm64` with bridge
+    `core,cleanup,delivery`. Smoke stamp: `s24-live-1782906947707`;
+    queue:
+    `/Users/Zhuanz/Library/Application Support/Streetlight/queue`.
+    `ping` returned `bridge:"connected"`; `list_templates` returned
+    15 templates and exposed `delivery_plan` / `delivery_report` as
+    pack `delivery` JSON artifacts with `updates_last_result:false`.
+    Main region: `s24-live-1782906947707-main`; output dir:
+    `/tmp/s24-live-1782906947707-render`; plan ref:
+    `artifact:delivery:plan:art_20260701115550245_006_dcdce6`;
+    render path:
+    `/tmp/s24-live-1782906947707-render/s24-live-1782906947707-main.wav`
+    matched the plan, was absolute, non-empty (`216736` bytes), and
+    had `RIFF` / `WAVE` header bytes with zero `.RPP` / `.RPP-bak`
+    sidecars. Report ref:
+    `artifact:delivery:report:art_20260701115552923_010_a44ee5`;
+    payload `overall_status:"pass"` with all 7 checks passing,
+    including `plan_fresh`, file presence/nonempty, filename/path,
+    `.wav`, WAV header, and no sidecars. LAST_RESULT anchor
+    `guid:{7228A0ED-E948-BC4D-9C44-866567FDD18D}` survived both
+    `delivery_plan` and `delivery_report` artifact calls. Missing-WAV
+    negative wrote fail report
+    `artifact:delivery:report:art_20260701115556554_017_510ca6`;
+    stale-project negative wrote fail report
+    `artifact:delivery:report:art_20260701115600666_023_4fa866` with
+    `plan_fresh:false`. Queue ended `pending=0`, `running=0`,
+    `done=0`. Smoke-created tracks/regions remain in the current
+    REAPER project for manual undo/delete.
 - **Slice 23A ✅ live-smoked / static-green (2026-07-01).**
   Source: `docs/plans/SLICE_23A_CLEANUP_SAFE_AGENT_STEP_ARCHITECT_PLAN.md`.
   User locked D1-D6: agent-step execution, no `cleanup_apply_safe`,

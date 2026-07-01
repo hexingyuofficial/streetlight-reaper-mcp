@@ -166,10 +166,87 @@ describe("callTemplate", () => {
     }
   });
 
+  it("delivery_plan JSON artifact producer returns only refs in the locked envelope", async () => {
+    const artifactRef =
+      "artifact:delivery:plan:art_20260701010101999_000_ab12cd";
+    const deliveryRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(deliveryRegistry, ["core", "delivery"]);
+    const bridge = startFakeBridge(queueDir, () =>
+      fakeTemplateOk("delivery_plan", [artifactRef]),
+    );
+    try {
+      const result = await callTemplate(client, deliveryRegistry, {
+        name: "delivery_plan",
+        params: { region_id: "region:var_01", output_dir: "/tmp/openreaper-delivery" },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.result).toEqual({
+        template: "delivery_plan",
+        changed_count: 1,
+        changed_ids: [artifactRef],
+        truncated: false,
+      });
+      expect(result.result).not.toHaveProperty("artifact");
+      expect(result.result).not.toHaveProperty("summary");
+      expect(result.result).not.toHaveProperty("payload");
+      expect(result.result).not.toHaveProperty("path");
+      expect(bridge.seen[0]?.expected_delta).toBeUndefined();
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("delivery_report JSON artifact producer returns only refs in the locked envelope", async () => {
+    const artifactRef =
+      "artifact:delivery:report:art_20260701010101999_001_ab12cd";
+    const deliveryRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(deliveryRegistry, ["core", "delivery"]);
+    const bridge = startFakeBridge(queueDir, () =>
+      fakeTemplateOk("delivery_report", [artifactRef]),
+    );
+    try {
+      const result = await callTemplate(client, deliveryRegistry, {
+        name: "delivery_report",
+        params: {
+          delivery_plan_ref:
+            "artifact:delivery:plan:art_20260701010101999_000_ab12cd",
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.result).toEqual({
+        template: "delivery_report",
+        changed_count: 1,
+        changed_ids: [artifactRef],
+        truncated: false,
+      });
+      expect(result.result).not.toHaveProperty("artifact");
+      expect(result.result).not.toHaveProperty("report");
+      expect(result.result).not.toHaveProperty("checks");
+      expect(result.result).not.toHaveProperty("payload");
+      expect(bridge.seen[0]?.expected_delta).toBeUndefined();
+    } finally {
+      await bridge.stop();
+    }
+  });
+
   it("keeps cleanup_plan disabled unless the cleanup pack is enabled", async () => {
     const result = await callTemplate(client, registry, {
       name: "cleanup_plan",
       params: {},
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TEMPLATE_NOT_FOUND");
+    }
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
+  it("keeps delivery templates disabled unless the delivery pack is enabled", async () => {
+    const result = await callTemplate(client, registry, {
+      name: "delivery_plan",
+      params: { region_id: "region:var_01", output_dir: "/tmp/openreaper-delivery" },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -189,6 +266,36 @@ describe("callTemplate", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("PARAMS_INVALID");
       expect(result.error.message).toMatch(/max_suggestions/);
+    }
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
+  it("validates delivery_plan required params before queue write", async () => {
+    const deliveryRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(deliveryRegistry, ["core", "delivery"]);
+    const result = await callTemplate(client, deliveryRegistry, {
+      name: "delivery_plan",
+      params: { region_id: "region:var_01" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("PARAMS_INVALID");
+      expect(result.error.message).toMatch(/output_dir/);
+    }
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
+  it("validates delivery_report required params before queue write", async () => {
+    const deliveryRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(deliveryRegistry, ["core", "delivery"]);
+    const result = await callTemplate(client, deliveryRegistry, {
+      name: "delivery_report",
+      params: {},
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("PARAMS_INVALID");
+      expect(result.error.message).toMatch(/delivery_plan_ref/);
     }
     expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
   });

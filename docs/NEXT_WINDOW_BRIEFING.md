@@ -1,7 +1,7 @@
 # Next Window Briefing — 2026-07-01
 
 Use this as the first read after a context reset. It is the current truth
-after Slice 23A live smoke.
+after Slice 24 static verification and REAPER live smoke.
 
 ## Snapshot
 
@@ -11,6 +11,38 @@ after Slice 23A live smoke.
   `e54fd9c kernel-hardening: slice 19 track color template`
 - Slice 19 is committed and pushed. It is static-green and live-smoked
   on REAPER `7.71/macOS-arm64`; H6's basic loop is closed.
+- Slice 24 is live-smoked and static-green. Source:
+  `docs/plans/SLICE_24_DELIVERY_CLOSURE_ARCHITECT_PLAN.md`.
+  User locked S24-D1..D10: opt-in `delivery` pack; `delivery_plan` and
+  `delivery_report`; validation failures write fail report artifacts;
+  missing/corrupt/oversized plan artifact reads stay typed call errors;
+  WAV header sniff only; cleanup provenance optional/no dereference;
+  stale mismatch conservative fail; region-name validation and
+  output-dir preflight before plan artifact; no new MCP tool, no
+  mastering/loudness/multi-format/upload, no `cleanup_apply_safe`, no
+  destructive cleanup, no `render_region` JSON migration, and no
+  delivery code in core. Live smoke runbook:
+  `docs/smokes/delivery_closure.md`. Bridge used for live smoke:
+  `_G.STREETLIGHT_ENABLED_PACKS = "core,cleanup,delivery"`.
+  Static gates are green: `npm run build` clean, `npm test` 421/421,
+  error codes fresh, manifest checks for default / `core,delivery` /
+  `core,cleanup,delivery` /
+  `core,cleanup,delivery,pack_contract_fixture`, template-authoring
+  checks for the same pack sets, and `git diff --check` clean. REAPER
+  live smoke passed on `7.71/macOS-arm64`; stamp
+  `s24-live-1782906947707`; queue ended clean. Main plan/report refs:
+  `artifact:delivery:plan:art_20260701115550245_006_dcdce6` and
+  `artifact:delivery:report:art_20260701115552923_010_a44ee5`.
+  Render wrote
+  `/tmp/s24-live-1782906947707-render/s24-live-1782906947707-main.wav`
+  exactly as planned, size `216736` bytes, `RIFF` / `WAVE` header,
+  zero `.RPP` / `.RPP-bak`; report payload was
+  `overall_status:"pass"` with all 7 checks passing. LAST_RESULT anchor
+  `guid:{7228A0ED-E948-BC4D-9C44-866567FDD18D}` survived both delivery
+  artifact calls. Missing-WAV and stale-project negatives wrote fail
+  report artifacts
+  `artifact:delivery:report:art_20260701115556554_017_510ca6` and
+  `artifact:delivery:report:art_20260701115600666_023_4fa866`.
 - Slice 23A is static-green and REAPER live-smoked. Source:
   `docs/plans/SLICE_23A_CLEANUP_SAFE_AGENT_STEP_ARCHITECT_PLAN.md`.
   User locked agent-step execution, no `cleanup_apply_safe`,
@@ -131,41 +163,40 @@ after Slice 23A live smoke.
 
 ## Current Slice
 
-Slice 23A implements **Phase 2B Cleanup Safe Agent-Step MVP**. It keeps
-`cleanup_plan` read-only and adds only a bounded executable
-`safe_action` shape for duplicate track rename suggestions.
+Slice 24 implements **Phase 2.5 Delivery Closure MVP**. It adds an
+opt-in `delivery` pack with read-only JSON artifact templates:
+`delivery_plan` and `delivery_report`.
 
 What changed in the current working tree:
 
-- `reaper/packs/cleanup/templates/cleanup.lua` now emits
-  deterministic/collision-safe duplicate-track `safe_action` steps for
-  existing `track_rename` only.
-- `scripts/__tests__/lua-structure.test.mjs` asserts no
-  `cleanup_apply_safe`, the `cleanup_safe_v1`/`track_rename` allowlist,
-  deterministic suffix generation, collision downgrade, and no forbidden
-  executable templates.
+- New TS pack files under
+  `packages/mcp-server/src/packs/delivery/`.
+- New Lua pack files under `reaper/packs/delivery/`.
+- Registry, manifest alignment, template-authoring lint, call-template,
+  list-template, and Lua-structure tests were extended for delivery.
 - Docs updated:
-  `docs/packs/cleanup/README.md`,
-  `docs/smokes/cleanup_plan.md`,
-  `docs/plans/SLICE_23A_CLEANUP_SAFE_AGENT_STEP_ARCHITECT_PLAN.md`,
+  `docs/plans/SLICE_24_DELIVERY_CLOSURE_ARCHITECT_PLAN.md`,
+  `docs/packs/delivery/README.md`,
+  `docs/smokes/delivery_closure.md`,
   `docs/HANDOFF.md`, `docs/PROGRESS.md`, and this briefing.
 
-Enable cleanup explicitly:
+Enable delivery explicitly:
 
 ```sh
-STREETLIGHT_ENABLED_PACKS=core,cleanup npm run check:manifest
-STREETLIGHT_ENABLED_PACKS=core,cleanup npm run check:template-authoring
+STREETLIGHT_ENABLED_PACKS=core,delivery npm run check:manifest
+STREETLIGHT_ENABLED_PACKS=core,delivery npm run check:template-authoring
 ```
 
 For REAPER live smoke, set this before loading the bridge:
 
 ```lua
-_G.STREETLIGHT_ENABLED_PACKS = "core,cleanup"
+_G.STREETLIGHT_ENABLED_PACKS = "core,cleanup,delivery"
 ```
 
 Current state is implementation-complete, static-green, and
-REAPER-smoke-green. Next action is whatever the user asks next: commit
-the smoke-evidence docs, request Slice 23B/24 planning, or pivot.
+REAPER-smoke-green. Next action is user-directed: commit the
+smoke-evidence docs on explicit ask, request the next slice packet, or
+pivot.
 
 ## Previous Slice
 

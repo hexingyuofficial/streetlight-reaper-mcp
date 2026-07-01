@@ -179,15 +179,64 @@ describe("listTemplates", () => {
     });
   });
 
-  it("can enable cleanup and fixture packs together", () => {
+  it("exposes delivery pack ownership and artifact metadata when enabled", () => {
     const registry = new CapabilityRegistry();
-    registerEnabledTemplates(registry, ["core", "cleanup", "pack_contract_fixture"]);
+    registerEnabledTemplates(registry, ["core", "delivery"]);
     const result = listTemplates(registry);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.result.templates).toHaveLength(15);
+    expect(result.result.templates).toHaveLength(14);
+    expect(
+      result.result.templates.find((t) => t.name === "cleanup_plan"),
+    ).toBeUndefined();
+
+    const deliveryPlan = result.result.templates.find(
+      (t) => t.name === "delivery_plan",
+    );
+    expect(deliveryPlan).toBeDefined();
+    expect(deliveryPlan?.pack).toBe("delivery");
+    expect(deliveryPlan?.risk).toBe("filesystem");
+    expect(deliveryPlan?.mutates).toBe(false);
+    expect(deliveryPlan?.undoable).toBe(false);
+    expect(deliveryPlan?.entity_kind).toBe("artifact");
+    expect(deliveryPlan?.undo_flags).toEqual([]);
+    expect(deliveryPlan).not.toHaveProperty("expectedDelta");
+    expect(deliveryPlan?.artifact).toEqual({
+      kind: "json",
+      scope: "plan",
+      ref_prefix: "artifact:delivery:plan:",
+      read_scope: "artifact",
+      updates_last_result: false,
+      schema: "openreaper.delivery_plan.v1",
+    });
+
+    const deliveryReport = result.result.templates.find(
+      (t) => t.name === "delivery_report",
+    );
+    expect(deliveryReport).toBeDefined();
+    expect(deliveryReport?.pack).toBe("delivery");
+    expect(deliveryReport?.artifact).toEqual({
+      kind: "json",
+      scope: "report",
+      ref_prefix: "artifact:delivery:report:",
+      read_scope: "artifact",
+      updates_last_result: false,
+      schema: "openreaper.delivery_report.v1",
+    });
+  });
+
+  it("can enable cleanup and fixture packs together", () => {
+    const registry = new CapabilityRegistry();
+    registerEnabledTemplates(registry, ["core", "cleanup", "delivery", "pack_contract_fixture"]);
+    const result = listTemplates(registry);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.result.templates).toHaveLength(17);
     expect(result.result.templates.some((t) => t.name === "cleanup_plan")).toBe(true);
+    expect(result.result.templates.some((t) => t.name === "delivery_plan")).toBe(true);
+    expect(result.result.templates.some((t) => t.name === "delivery_report")).toBe(true);
     expect(result.result.templates.some((t) => t.name === "fixture_artifact_probe")).toBe(true);
   });
 

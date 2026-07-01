@@ -19,6 +19,10 @@ import {
   CLEANUP_PACK_ID,
   registerCleanupTemplates,
 } from "../packs/cleanup/index.js";
+import {
+  DELIVERY_PACK_ID,
+  registerDeliveryTemplates,
+} from "../packs/delivery/index.js";
 
 /**
  * Register every v0.1 core-pack template with the MCP server's registry.
@@ -58,6 +62,8 @@ export function registerEnabledTemplates(
       registerCoreTemplates(registry);
     } else if (pack === CLEANUP_PACK_ID) {
       registerCleanupTemplates(registry);
+    } else if (pack === DELIVERY_PACK_ID) {
+      registerDeliveryTemplates(registry);
     } else if (pack === PACK_CONTRACT_FIXTURE_PACK_ID) {
       registerPackContractFixtureTemplates(registry);
     } else {
