@@ -1,4 +1,4 @@
-# Handoff — 2026-07-01 (Slice 27 loop candidates live-smoked / static-green)
+# Handoff — 2026-07-01 (Slice 28 click risk live-smoked / static-green)
 
 Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
 
@@ -19,6 +19,41 @@ Short, dense. Read this first. Long-form log is in `docs/PROGRESS.md`.
   explicit ask. User preference (2026-06-29): local commits are okay as
   explicit save points, but avoid pushing during work hours unless the
   user explicitly makes an exception.
+- **Slice 28 ✅ live-smoked / static-green
+  (2026-07-01).**
+  Source: `docs/plans/SLICE_28_ANALYSIS_CLICK_RISK_ARCHITECT_PLAN.md`.
+  User locked S28-D1..D6: `click_risk` is explicit opt-in and
+  narrow (not `loop_qa`); `risk_score` is `0..1` where higher is more
+  dangerous; standalone `click_risk` requires item-local `loop_window`;
+  same-call `loop_candidates + click_risk` may use the best candidate
+  when no window is supplied; caps are fixed; no new error code.
+  Defaults stay `loudness + peaks + silence`; schema/ref stay
+  `openreaper.analysis.item_audio.v1` and
+  `artifact:analysis:analysis:<id>`; no `get_state(scope:"analysis")`;
+  no mutation/render/recipe/seamless guarantee/MIDI/OpenAudio/AI/core
+  parking. Static gates are green: build clean, `npm test` 434/434,
+  error codes fresh at 26, default manifest/template-authoring 12,
+  `core,analysis` 13, all-pack 18, and `git diff --check` clean.
+  Reviewer found no blocker/P1/P2. REAPER live smoke passed on
+  `7.71/macOS-arm64`; stamp `s28-live-1782923420082`; evidence:
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/s28-live-1782923420082/evidence.json`.
+  Low-risk ref
+  `artifact:analysis:analysis:art_20260701163021528_004_9b9220`:
+  `risk_score=0.082159`, `risk_label=low`, source `user`.
+  High-risk ref
+  `artifact:analysis:analysis:art_20260701163023376_007_71144b`:
+  `start_end_sample_delta=1.599976`, hard floor
+  `hard_discontinuity_delta=0.5`, `risk_score=0.67`,
+  `risk_label=high`. Candidate-source ref
+  `artifact:analysis:analysis:art_20260701163024524_009_068a7f`:
+  source `best_loop_candidate`, `candidate_count=5`, no transient leak.
+  Missing `loop_window` returned `PARAMS_INVALID`; default analysis still
+  omitted advanced features; LAST_RESULT anchor
+  `guid:{73014DD7-2C38-334B-AFBB-41528D0D7A14}` survived; queue ended
+  clean. Mid-smoke fixes: PCM accessor reads use item/take-local time,
+  and hard wrap discontinuities floor into high risk. Source-offline
+  negative is still covered by Slice 25/26; Slice 28 used the stable
+  missing-window negative because REAPER may copy imported media.
 - **Slice 27 ✅ live-smoked / static-green
   (2026-07-01).**
   Source: `docs/plans/SLICE_27_ANALYSIS_LOOP_CANDIDATES_ARCHITECT_PLAN.md`.

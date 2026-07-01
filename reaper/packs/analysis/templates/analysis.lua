@@ -8,6 +8,8 @@
 -- onset markers, not loop candidates or click-risk metrics.
 -- Slice 27 adds explicit opt-in loop candidates. They are lightweight
 -- heuristic intervals, not seamless-loop guarantees.
+-- Slice 28 adds explicit opt-in click-risk scoring for one loop boundary.
+-- It is a cheap heuristic, not a seamless-loop proof.
 
 local M = {}
 
@@ -30,6 +32,16 @@ local LOOP_MIN_TRANSIENT_INDEX_GAP = 1
 local LOOP_MAX_PAIRS_CONSIDERED = 4096
 local LOOP_SILENCE_MARGIN_SECONDS = 0.04
 local LOOP_PEAK_CONTINUITY_MAX_DB = 18
+local CLICK_RISK_WINDOW_MS = 12
+local CLICK_RISK_MIN_DURATION_SECONDS = 0.05
+local CLICK_RISK_MAX_DURATION_SECONDS = 8.0
+local CLICK_RISK_LOW_THRESHOLD = 0.33
+local CLICK_RISK_HIGH_THRESHOLD = 0.66
+local CLICK_RISK_SAMPLE_DELTA_NORM = 0.5
+local CLICK_RISK_PEAK_DELTA_NORM = 1.0
+local CLICK_RISK_RMS_DELTA_DB_NORM = 24
+local CLICK_RISK_ZERO_CROSSING_MS_NORM = CLICK_RISK_WINDOW_MS
+local CLICK_RISK_HARD_DISCONTINUITY_DELTA = 0.5
 local EPSILON = 0.000000000001
 
 local function raise(code, message, recoverable)
@@ -44,6 +56,11 @@ end
 local function round3(value)
   if type(value) ~= "number" then return 0 end
   return math.floor(value * 1000 + 0.5) / 1000
+end
+
+local function abs_or_zero(value)
+  if type(value) ~= "number" then return 0 end
+  return math.abs(value)
 end
 
 local function dbfs(value)
@@ -408,6 +425,206 @@ local function detect_loop_candidates(transients, scan, ctx)
   }
 end
 
+local function validate_loop_window(raw, window, errs)
+  if type(raw) ~= "table" then
+    raise(errs.PARAMS_INVALID, "loop_window is required for click_risk without loop_candidates", true)
+  end
+  local start_time = raw.start
+  local end_time = raw["end"]
+  if type(start_time) ~= "number" or type(end_time) ~= "number" then
+    raise(errs.PARAMS_INVALID, "loop_window.start and loop_window.end must be numbers", true)
+  end
+  if start_time < window.local_start or end_time > window.local_end or end_time <= start_time then
+    raise(errs.PARAMS_INVALID, "loop_window must be within the analysis time_range and end > start", true)
+  end
+  local duration = end_time - start_time
+  if duration < CLICK_RISK_MIN_DURATION_SECONDS then
+    raise(
+      errs.PARAMS_INVALID,
+      "loop_window duration must be at least " .. tostring(CLICK_RISK_MIN_DURATION_SECONDS) .. " seconds",
+      true
+    )
+  end
+  if duration > CLICK_RISK_MAX_DURATION_SECONDS then
+    raise(
+      errs.PARAMS_INVALID,
+      "loop_window duration must be at most " .. tostring(CLICK_RISK_MAX_DURATION_SECONDS) .. " seconds",
+      true
+    )
+  end
+  return {
+    start = start_time,
+    ["end"] = end_time,
+    duration = duration,
+    source = "user",
+  }
+end
+
+local function best_candidate_loop_window(loop_candidates, window, errs)
+  if not loop_candidates or (loop_candidates.candidate_count or 0) <= 0 then
+    raise(
+      errs.PARAMS_INVALID,
+      "click_risk requires loop_window or a same-call loop_candidates result with at least one candidate",
+      true
+    )
+  end
+  local best = loop_candidates.candidates[1]
+  if not best then
+    raise(
+      errs.PARAMS_INVALID,
+      "click_risk requires loop_window or a same-call loop_candidates result with at least one candidate",
+      true
+    )
+  end
+  return {
+    start = best.start,
+    ["end"] = best["end"],
+    duration = best.duration,
+    source = "best_loop_candidate",
+  }
+end
+
+local function read_boundary_window(take, window, local_time, errs)
+  local half_seconds = (CLICK_RISK_WINDOW_MS / 1000) / 2
+  local local_start = math.max(window.local_start, local_time - half_seconds)
+  local local_end = math.min(window.local_end, local_time + half_seconds)
+  local duration = local_end - local_start
+  if duration <= 0 then
+    raise(errs.ANALYSIS_FAILED, "click_risk boundary window has zero duration", true)
+  end
+
+  local sample_rate = DEFAULT_SAMPLE_RATE
+  local channels = 2
+  local frames = math.max(1, math.ceil(duration * sample_rate))
+  local accessor = reaper.CreateTakeAudioAccessor(take)
+  if not accessor then
+    raise(errs.AUDIO_SOURCE_OFFLINE, "Could not create audio accessor for click_risk", true)
+  end
+
+  local result = {
+    first = 0,
+    last = 0,
+    center = 0,
+    peak = 0,
+    rms = 0,
+    nearest_zero_ms = CLICK_RISK_WINDOW_MS,
+  }
+
+  local ok, err_obj = pcall(function()
+    local buffer = reaper.new_array(frames * channels)
+    local retval = reaper.GetAudioAccessorSamples(
+      accessor,
+      sample_rate,
+      channels,
+      local_start,
+      frames,
+      buffer
+    )
+    if retval == -1 then
+      raise(errs.AUDIO_SOURCE_OFFLINE, "REAPER audio accessor returned an error during click_risk", true)
+    end
+    if retval == 0 then
+      raise(errs.AUDIO_SOURCE_OFFLINE, "No boundary samples were available for click_risk", true)
+    end
+
+    local values = frames * channels
+    local sum = 0
+    local peak = 0
+    local best_zero_frames = frames
+    local center_frame = math.max(0, math.min(frames - 1, math.floor((local_time - local_start) * sample_rate + 0.5)))
+    for frame = 0, frames - 1 do
+      local mono = 0
+      for channel = 1, channels do
+        local value = buffer[(frame * channels) + channel] or 0
+        mono = mono + value
+        local abs_value = math.abs(value)
+        if abs_value > peak then peak = abs_value end
+        sum = sum + value * value
+      end
+      mono = mono / channels
+      local distance = math.abs(frame - center_frame)
+      if math.abs(mono) <= SILENCE_THRESHOLD and distance < best_zero_frames then
+        best_zero_frames = distance
+      end
+    end
+
+    result.first = buffer[1] or 0
+    result.last = buffer[math.max(1, values - channels + 1)] or 0
+    result.center = buffer[(center_frame * channels) + 1] or 0
+    result.peak = peak
+    result.rms = math.sqrt(sum / math.max(1, values))
+    result.nearest_zero_ms = round3((best_zero_frames / sample_rate) * 1000)
+  end)
+
+  reaper.DestroyAudioAccessor(accessor)
+  if not ok then error(err_obj) end
+  return result
+end
+
+local function risk_label(score)
+  if score < CLICK_RISK_LOW_THRESHOLD then return "low" end
+  if score < CLICK_RISK_HIGH_THRESHOLD then return "medium" end
+  return "high"
+end
+
+local function detect_click_risk(take, scan, window, loop_window, ctx)
+  local start_window = read_boundary_window(take, window, loop_window.start, ctx.errs)
+  local end_window = read_boundary_window(take, window, loop_window["end"], ctx.errs)
+
+  local start_end_sample_delta = abs_or_zero(end_window.center - start_window.center)
+  local boundary_peak_delta = math.abs((end_window.peak or 0) - (start_window.peak or 0))
+  local start_rms_db = dbfs(start_window.rms)
+  local end_rms_db = dbfs(end_window.rms)
+  local boundary_rms_delta_db = math.abs(start_rms_db - end_rms_db)
+  local zero_crossing_distance_start_ms = start_window.nearest_zero_ms
+  local zero_crossing_distance_end_ms = end_window.nearest_zero_ms
+  local zero_crossing_distance_score = clamp01(
+    math.max(zero_crossing_distance_start_ms, zero_crossing_distance_end_ms)
+      / CLICK_RISK_ZERO_CROSSING_MS_NORM
+  )
+
+  local score = clamp01(
+    (clamp01(start_end_sample_delta / CLICK_RISK_SAMPLE_DELTA_NORM) * 0.40)
+      + (clamp01(boundary_peak_delta / CLICK_RISK_PEAK_DELTA_NORM) * 0.25)
+      + (clamp01(boundary_rms_delta_db / CLICK_RISK_RMS_DELTA_DB_NORM) * 0.25)
+      + (zero_crossing_distance_score * 0.10)
+  )
+  if start_end_sample_delta >= CLICK_RISK_HARD_DISCONTINUITY_DELTA then
+    score = math.max(score, CLICK_RISK_HIGH_THRESHOLD + 0.01)
+  end
+
+  return {
+    type = "loop_boundary_click_risk",
+    algorithm_version = "click_risk_v1",
+    loop_window = {
+      start = round6(loop_window.start),
+      ["end"] = round6(loop_window["end"]),
+      duration = round6(loop_window.duration),
+      source = loop_window.source,
+    },
+    risk_score = round6(score),
+    risk_label = risk_label(score),
+    metrics = {
+      start_end_sample_delta = round6(start_end_sample_delta),
+      boundary_peak_delta = round6(boundary_peak_delta),
+      boundary_rms_delta_db = round3(boundary_rms_delta_db),
+      zero_crossing_distance_start_ms = zero_crossing_distance_start_ms,
+      zero_crossing_distance_end_ms = zero_crossing_distance_end_ms,
+    },
+    limits = {
+      window_ms = CLICK_RISK_WINDOW_MS,
+      max_boundary_windows = 2,
+      min_loop_duration_seconds = CLICK_RISK_MIN_DURATION_SECONDS,
+      max_loop_duration_seconds = CLICK_RISK_MAX_DURATION_SECONDS,
+      score_direction = "higher_is_more_dangerous",
+      hard_discontinuity_delta = CLICK_RISK_HARD_DISCONTINUITY_DELTA,
+    },
+    warnings = ctx.json.array({
+      "click_risk is a heuristic boundary score, not a seamless-loop guarantee",
+    }),
+  }
+end
+
 local function scan_audio(take, window, features, errs)
   ensure_accessor_api(errs)
 
@@ -434,13 +651,13 @@ local function scan_audio(take, window, features, errs)
   }
 
   local ok, err_obj = pcall(function()
-    local cursor = window.project_start
-    while cursor < window.project_end - EPSILON do
-      local remaining = window.project_end - cursor
+    local cursor = window.local_start
+    while cursor < window.local_end - EPSILON do
+      local remaining = window.local_end - cursor
       local frames = math.min(BLOCK_SAMPLES, math.max(1, math.ceil(remaining * sample_rate)))
       local request_duration = frames / sample_rate
-      if cursor + request_duration > window.project_end then
-        frames = math.max(1, math.floor((window.project_end - cursor) * sample_rate + 0.5))
+      if cursor + request_duration > window.local_end then
+        frames = math.max(1, math.floor((window.local_end - cursor) * sample_rate + 0.5))
         request_duration = frames / sample_rate
       end
 
@@ -473,13 +690,12 @@ local function scan_audio(take, window, features, errs)
           if abs_value > block_peak then block_peak = abs_value end
         end
         state.sample_frames = state.sample_frames + frames
-        if has_feature(features, "transients") or has_feature(features, "loop_candidates") then
-          local block_local_start_for_frames = cursor - window.project_start + window.local_start
-          scan_frame_peaks(buffer, frames, channels, block_local_start_for_frames, state)
+        if has_feature(features, "transients") or has_feature(features, "loop_candidates") or has_feature(features, "click_risk") then
+          scan_frame_peaks(buffer, frames, channels, cursor, state)
         end
 
-        if has_feature(features, "silence") or has_feature(features, "loop_candidates") then
-          local block_start_local = cursor - window.project_start + window.local_start
+        if has_feature(features, "silence") or has_feature(features, "loop_candidates") or has_feature(features, "click_risk") then
+          local block_start_local = cursor
           local block_end_local = math.min(window.local_end, block_start_local + request_duration)
           if block_peak <= SILENCE_THRESHOLD then
             if not state.silence_open then
@@ -489,7 +705,7 @@ local function scan_audio(take, window, features, errs)
           else
             close_silence_segment(state, block_start_local)
           end
-          if cursor + request_duration >= window.project_end - EPSILON then
+          if cursor + request_duration >= window.local_end - EPSILON then
             close_silence_segment(state, block_end_local)
           end
         end
@@ -509,7 +725,7 @@ local function scan_audio(take, window, features, errs)
   return state
 end
 
-local function build_feature_payload(scan, window, features, ctx)
+local function build_feature_payload(scan, window, features, params, take, ctx)
   local computed = {}
   local payload = {}
   local summary = {}
@@ -611,6 +827,23 @@ local function build_feature_payload(scan, window, features, ctx)
     end
   end
 
+  if has_feature(features, "click_risk") then
+    local click_loop_window
+    if type(params.loop_window) == "table" then
+      click_loop_window = validate_loop_window(params.loop_window, window, ctx.errs)
+    else
+      click_loop_window = best_candidate_loop_window(payload.loop_candidates, window, ctx.errs)
+    end
+    local click_risk = detect_click_risk(take, scan, window, click_loop_window, ctx)
+    computed[#computed + 1] = "click_risk"
+    payload.click_risk = click_risk
+    summary.click_risk_score = click_risk.risk_score
+    summary.click_risk_label = click_risk.risk_label
+    summary.click_risk_loop_start = click_risk.loop_window.start
+    summary.click_risk_loop_end = click_risk.loop_window["end"]
+    summary.click_risk_window_source = click_risk.loop_window.source
+  end
+
   summary.computed_features = ctx.json.array(computed)
   summary.duration_seconds = round6(window.duration)
   summary.sample_frames = scan.sample_frames
@@ -667,7 +900,7 @@ function M.item_audio_analyze(params, ctx)
   local features = normalize_features(params.features or { "loudness", "peaks", "silence" })
   local window = analysis_window(params, item, errs)
   local scan = scan_audio(take, window, features, errs)
-  local feature_summary, feature_payload = build_feature_payload(scan, window, features, ctx)
+  local feature_summary, feature_payload = build_feature_payload(scan, window, features, params, take, ctx)
 
   local payload = {
     schema = SCHEMA,
@@ -704,17 +937,24 @@ function M.item_audio_analyze(params, ctx)
       loop_max_pairs_considered = LOOP_MAX_PAIRS_CONSIDERED,
       loop_silence_margin_seconds = LOOP_SILENCE_MARGIN_SECONDS,
       loop_peak_continuity_max_db = LOOP_PEAK_CONTINUITY_MAX_DB,
+      click_risk_window_ms = CLICK_RISK_WINDOW_MS,
+      click_risk_min_duration_seconds = CLICK_RISK_MIN_DURATION_SECONDS,
+      click_risk_max_duration_seconds = CLICK_RISK_MAX_DURATION_SECONDS,
+      click_risk_low_threshold = CLICK_RISK_LOW_THRESHOLD,
+      click_risk_high_threshold = CLICK_RISK_HIGH_THRESHOLD,
     },
     loudness = feature_payload.loudness,
     peaks = feature_payload.peaks,
     silence = feature_payload.silence,
     transients = feature_payload.transients,
     loop_candidates = feature_payload.loop_candidates,
+    click_risk = feature_payload.click_risk,
     warnings = ctx.json.array({
       "loudness is RMS dBFS, not LUFS",
       "peaks are sample peaks, not true peaks",
       "transients are heuristic onset candidates, not loop candidates or click-risk metrics",
       "loop_candidates are heuristic intervals, not click-risk metrics or seamless-loop guarantees",
+      "click_risk is a heuristic boundary score, not a seamless-loop guarantee",
     }),
   }
 
@@ -739,6 +979,11 @@ function M.item_audio_analyze(params, ctx)
     best_loop_candidate_end = feature_summary.best_loop_candidate_end,
     best_loop_candidate_duration = feature_summary.best_loop_candidate_duration,
     best_loop_candidate_score = feature_summary.best_loop_candidate_score,
+    click_risk_score = feature_summary.click_risk_score,
+    click_risk_label = feature_summary.click_risk_label,
+    click_risk_loop_start = feature_summary.click_risk_loop_start,
+    click_risk_loop_end = feature_summary.click_risk_loop_end,
+    click_risk_window_source = feature_summary.click_risk_window_source,
     sample_frames = feature_summary.sample_frames,
   }
 

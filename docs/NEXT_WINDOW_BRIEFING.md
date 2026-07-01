@@ -1,7 +1,7 @@
 # Next Window Briefing — 2026-07-01
 
 Use this as the first read after a context reset. It is the current truth
-after Slice 27 static implementation and REAPER live smoke.
+after Slice 28 static implementation and REAPER live smoke.
 
 ## Snapshot
 
@@ -9,6 +9,28 @@ after Slice 27 static implementation and REAPER live smoke.
 - Remote: `https://github.com/hexingyuofficial/OpenReaper.git`
 - Branch: `main`; latest pushed checkpoint is Slice 26:
   `b6077a6 first-real-version: slice 26 analysis transients`
+- Slice 28 is implemented, static-green, and REAPER live-smoked.
+  Source: `docs/plans/SLICE_28_ANALYSIS_CLICK_RISK_ARCHITECT_PLAN.md`.
+  It adds explicit opt-in `features:["click_risk"]` to
+  `item_audio_analyze`. Standalone click risk requires item-local
+  `loop_window`; same-call `loop_candidates + click_risk` can use the
+  best same-call candidate. Defaults remain `loudness + peaks + silence`;
+  no new error code; no `get_state(scope:"analysis")`; no seamless-loop
+  guarantee or mutation. Static gates are green: build clean,
+  `npm test` 434/434, error codes fresh at 26, default
+  manifest/template-authoring 12, `core,analysis` 13, all-pack 18, and
+  `git diff --check` clean. Reviewer found no blocker/P1/P2. Live smoke
+  passed on REAPER `7.71/macOS-arm64`; stamp
+  `s28-live-1782923420082`; evidence:
+  `/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/s28-live-1782923420082/evidence.json`.
+  Low-risk ref `artifact:analysis:analysis:art_20260701163021528_004_9b9220`
+  scored `0.082159/low`; high-risk ref
+  `artifact:analysis:analysis:art_20260701163023376_007_71144b`
+  scored `0.67/high`; same-call candidate ref
+  `artifact:analysis:analysis:art_20260701163024524_009_068a7f` used
+  `best_loop_candidate` and did not leak transients. Mid-smoke fixes:
+  PCM accessor reads are item/take-local, and hard discontinuities floor
+  into high risk.
 - Slice 27 is implemented, static-green, and REAPER live-smoked.
   Source:
   `docs/plans/SLICE_27_ANALYSIS_LOOP_CANDIDATES_ARCHITECT_PLAN.md`.

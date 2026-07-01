@@ -259,6 +259,8 @@ describe("callTemplate", () => {
       expect(result.result).not.toHaveProperty("peaks");
       expect(result.result).not.toHaveProperty("silence");
       expect(result.result).not.toHaveProperty("transients");
+      expect(result.result).not.toHaveProperty("loop_candidates");
+      expect(result.result).not.toHaveProperty("click_risk");
       expect(bridge.seen[0]?.expected_delta).toBeUndefined();
       expect(bridge.seen[0]?.params).toEqual({
         item_id: "selected:0",
@@ -329,6 +331,73 @@ describe("callTemplate", () => {
       expect(bridge.seen[0]?.params).toEqual({
         item_id: "selected:0",
         features: ["loop_candidates"],
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("item_audio_analyze accepts standalone click_risk with an explicit loop_window", async () => {
+    const artifactRef =
+      "artifact:analysis:analysis:art_20260701010101999_003_ac34bd";
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+    const bridge = startFakeBridge(queueDir, () =>
+      fakeTemplateOk("item_audio_analyze", [artifactRef]),
+    );
+    try {
+      const result = await callTemplate(client, analysisRegistry, {
+        name: "item_audio_analyze",
+        params: {
+          item_id: "selected:0",
+          features: ["click_risk"],
+          loop_window: { start: 0.2, end: 1.2 },
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.result).toEqual({
+        template: "item_audio_analyze",
+        changed_count: 1,
+        changed_ids: [artifactRef],
+        truncated: false,
+      });
+      expect(result.result).not.toHaveProperty("payload");
+      expect(result.result).not.toHaveProperty("click_risk");
+      expect(bridge.seen[0]?.params).toEqual({
+        item_id: "selected:0",
+        features: ["click_risk"],
+        loop_window: { start: 0.2, end: 1.2 },
+      });
+    } finally {
+      await bridge.stop();
+    }
+  });
+
+  it("item_audio_analyze accepts loop_candidates plus click_risk without an explicit loop_window", async () => {
+    const artifactRef =
+      "artifact:analysis:analysis:art_20260701010101999_004_db45ce";
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+    const bridge = startFakeBridge(queueDir, () =>
+      fakeTemplateOk("item_audio_analyze", [artifactRef]),
+    );
+    try {
+      const result = await callTemplate(client, analysisRegistry, {
+        name: "item_audio_analyze",
+        params: {
+          item_id: "selected:0",
+          features: ["loop_candidates", "click_risk"],
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.result.changed_ids).toEqual([artifactRef]);
+      expect(result.result).not.toHaveProperty("payload");
+      expect(result.result).not.toHaveProperty("click_risk");
+      expect(bridge.seen[0]?.params).toEqual({
+        item_id: "selected:0",
+        features: ["loop_candidates", "click_risk"],
       });
     } finally {
       await bridge.stop();
@@ -431,12 +500,57 @@ describe("callTemplate", () => {
     expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
   });
 
+  it("validates standalone click_risk loop_window before queue write", async () => {
+    const analysisRegistry = new CapabilityRegistry();
+    registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
+
+    const missing = await callTemplate(client, analysisRegistry, {
+      name: "item_audio_analyze",
+      params: { item_id: "selected:0", features: ["click_risk"] },
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) {
+      expect(missing.error.code).toBe("PARAMS_INVALID");
+      expect(missing.error.message).toMatch(/loop_window/);
+    }
+
+    const inverted = await callTemplate(client, analysisRegistry, {
+      name: "item_audio_analyze",
+      params: {
+        item_id: "selected:0",
+        features: ["click_risk"],
+        loop_window: { start: 1, end: 0.5 },
+      },
+    });
+    expect(inverted.ok).toBe(false);
+    if (!inverted.ok) {
+      expect(inverted.error.code).toBe("PARAMS_INVALID");
+      expect(inverted.error.message).toMatch(/loop_window/);
+    }
+
+    const irrelevant = await callTemplate(client, analysisRegistry, {
+      name: "item_audio_analyze",
+      params: {
+        item_id: "selected:0",
+        features: ["loudness"],
+        loop_window: { start: 0.2, end: 1.2 },
+      },
+    });
+    expect(irrelevant.ok).toBe(false);
+    if (!irrelevant.ok) {
+      expect(irrelevant.error.code).toBe("PARAMS_INVALID");
+      expect(irrelevant.error.message).toMatch(/loop_window is only valid/);
+    }
+
+    expect(await fs.readdir(path.join(queueDir, "pending"))).toEqual([]);
+  });
+
   it("validates unknown item_audio_analyze features before queue write", async () => {
     const analysisRegistry = new CapabilityRegistry();
     registerEnabledTemplates(analysisRegistry, ["core", "analysis"]);
     const result = await callTemplate(client, analysisRegistry, {
       name: "item_audio_analyze",
-      params: { item_id: "selected:0", features: ["click_risk"] },
+      params: { item_id: "selected:0", features: ["spectral_summary"] },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {

@@ -11,6 +11,52 @@ first.
 
 ## Current Status
 
+**Slice 28 ✅ live-smoked / static-green
+(2026-07-01).** Source:
+`docs/plans/SLICE_28_ANALYSIS_CLICK_RISK_ARCHITECT_PLAN.md`. This is
+Phase 3D Analysis Click-Risk MVP. User locked S28-D1..D6:
+`click_risk` is the narrow feature name (not `loop_qa`); `risk_score`
+is `0..1` where higher means more dangerous; standalone `click_risk`
+requires an item-local `loop_window`; same-call
+`loop_candidates + click_risk` may use the best candidate when
+`loop_window` is omitted; caps are fixed in v1; no new error code.
+Defaults remain `loudness + peaks + silence`; schema/ref remain
+`openreaper.analysis.item_audio.v1` / `artifact:analysis:analysis:<id>`;
+no `get_state(scope:"analysis")`; no trim/fade/set-loop/render/recipe/
+seamless guarantee/MIDI/OpenAudio/AI/new MCP tool/core parking.
+Static gates are green after mid-smoke fixes: `npm run build` clean,
+`npm test` 434/434, `npm run check:error-codes-fresh` -> 26 codes
+fresh, default manifest/template-authoring -> 12 templates,
+`core,analysis` manifest/template-authoring -> 13 templates, all-pack
+manifest/template-authoring -> 18 templates, and `git diff --check`
+clean. Reviewer found no blockers/P1/P2; one description polish was
+fixed. REAPER live smoke passed on `7.71/macOS-arm64` with bridge
+`core,analysis`; smoke stamp `s28-live-1782923420082`; evidence:
+`/var/folders/n5/dxh3rm291xq9js6hqjdhn1br0000gn/T/s28-live-1782923420082/evidence.json`.
+Low-risk explicit window artifact
+`artifact:analysis:analysis:art_20260701163021528_004_9b9220` had
+`risk_score:0.082159`, `risk_label:"low"`,
+`loop_window.source:"user"`, and `score_direction:"higher_is_more_dangerous"`.
+High-risk explicit window artifact
+`artifact:analysis:analysis:art_20260701163023376_007_71144b` had
+`start_end_sample_delta:1.599976`, hard-discontinuity floor
+`hard_discontinuity_delta:0.5`, `risk_score:0.67`, and
+`risk_label:"high"`. Same-call candidate artifact
+`artifact:analysis:analysis:art_20260701163024524_009_068a7f` used
+`loop_window.source:"best_loop_candidate"`, found 5 candidates, and did
+not leak `payload.transients`. Missing standalone `loop_window` returned
+`PARAMS_INVALID`; default analysis still omitted `transients`,
+`loop_candidates`, and `click_risk`; LAST_RESULT anchor
+`guid:{73014DD7-2C38-334B-AFBB-41528D0D7A14}` survived analysis;
+`get_state(scope:"analysis")` still returned `PARAMS_INVALID`; queue
+ended clean. Mid-smoke fixes: (1) PCM accessor reads now use item/take
+local time instead of project time, while project metadata remains
+converted; (2) obvious wrap discontinuities now floor into the high-risk
+label so pure sample jumps are not diluted to medium. Source-offline
+negative remains covered by Slice 25/26 live smoke; Slice 28 smoke used
+the stable missing-window negative because `media_import` may copy source
+media into the project media directory.
+
 **Slice 27 ✅ live-smoked / static-green
 (2026-07-01).** Source:
 `docs/plans/SLICE_27_ANALYSIS_LOOP_CANDIDATES_ARCHITECT_PLAN.md`. This

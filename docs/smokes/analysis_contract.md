@@ -3,7 +3,8 @@
 This smoke verifies the analysis pack with a real REAPER bridge. Slice 25
 covers loudness / peaks / silence; Slice 26 adds explicit opt-in
 transient candidates; Slice 27 adds explicit opt-in loop candidate
-intervals.
+intervals; Slice 28 adds explicit opt-in loop-boundary click-risk
+scoring.
 
 ## Preconditions
 
@@ -93,9 +94,28 @@ error codes.
     `["loudness","peaks","silence","transients","loop_candidates"]`;
     old Slice 25 fields remain sane, transients remain bounded, and
     loop candidates remain bounded.
-14. Negative: source unavailable. If a stable offline-media setup is not
+14. Click-risk explicit-window regression: call with
+    `features:["click_risk"]` and an item-local `loop_window`. Expected:
+    locked envelope with one artifact ref; summary contains
+    `click_risk_score`, `click_risk_label`, `click_risk_loop_start`,
+    `click_risk_loop_end`, and `click_risk_window_source:"user"`;
+    payload `click_risk.algorithm_version:"click_risk_v1"`;
+    `risk_score` is `0..1`; `risk_label` is one of `low`, `medium`,
+    `high`; limits state `score_direction:"higher_is_more_dangerous"`
+    and `hard_discontinuity_delta:0.5`.
+15. Click-risk candidate-source regression: call with
+    `features:["loop_candidates","click_risk"]` and no `loop_window`.
+    Expected: either source `best_loop_candidate` if candidates exist or
+    typed `PARAMS_INVALID` if no candidate source exists. This path must
+    not expose `payload.transients` unless `transients` is explicitly
+    requested.
+16. Click-risk negative: call `features:["click_risk"]` without
+    `loop_window`. Expected: `PARAMS_INVALID`; do not fabricate a score.
+17. Negative: source unavailable. If a stable offline-media setup is not
     practical, use an item with no active take. Expected typed error:
-    `AUDIO_SOURCE_OFFLINE`.
-15. Regression: `get_state(scope:"analysis")` remains invalid or
+    `AUDIO_SOURCE_OFFLINE`. Note that deleting the original import path
+    is not stable on every REAPER setup because `media_import` may copy
+    source media into the project media directory.
+18. Regression: `get_state(scope:"analysis")` remains invalid or
     unimplemented; use `scope:"artifact"` only.
-16. Queue ends clean: `pending=0`, `running=0`, `done=0`.
+19. Queue ends clean: `pending=0`, `running=0`, `done=0`.
